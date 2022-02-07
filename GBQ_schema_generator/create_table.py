@@ -8,7 +8,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 script_home = os.getcwd()
 
 # GOOGLE SERVICE ACCOUNT
-GOOGLE_CRED = "credentials/central-cto-ofm-data-hub-dev-17796d07812b.json"
+GOOGLE_CRED = "../credentials/central-cto-ofm-data-hub-dev-17796d07812b.json"
 
 # GOOGLE BIGQUERY INFO, still in test output table
 PROJECT_ID  = "central-cto-ofm-data-hub-dev"

@@ -33,7 +33,7 @@ def convertType(data_type):
 
 # read Excel file
 my_sheet = 'Field-Officemate'
-file_name = '../OFM-B2S_Source_Datalake_20211020-live-version.xlsx'
+file_name = 'OFM-B2S_Source_Datalake_20211020-live-version.xlsx'
 df = pd.read_excel(file_name, sheet_name = my_sheet, usecols = [0,1,2,3])
 
 mkDir("schemas",True)
