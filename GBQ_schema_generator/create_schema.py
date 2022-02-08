@@ -1,6 +1,6 @@
+from numpy import source
 import pandas as pd
-import json
-import os
+import json, os, shutil
 
 # set path to script location
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -40,10 +40,16 @@ mkDir("schemas",True)
 
 # Create source as main folder
 source_name = df.iat[0,0]
+
+# Remove existing source folder first
+print()
+print(f"Removing existing folder: {source_name}")
+shutil.rmtree(source_name)
+
 mkDir(source_name,True)
 print(f"Converting source: {source_name}")
 
-exclude_name = ['TBDEPTMASTERJDA','TBOBS_NonStore_Monthly','OFM_TdSystem']
+exclude_name = []
 all_excel_tb = df.iloc[:,1].unique()
 
 for table_name in all_excel_tb:

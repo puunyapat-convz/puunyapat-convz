@@ -39,6 +39,7 @@ def open_schema(filepath):
     with open(script_home+"/"+filepath) as json_file:
         schema_dict = json.load(json_file)
         table = bigquery.Table(table_id, schema=schema_dict)
+        table.time_partitioning = bigquery.Table.TimePartitioning(field="report_date")
         table = client.create_table(table)
 
 if __name__ == "__main__":
@@ -46,9 +47,11 @@ if __name__ == "__main__":
     # Construct a BigQuery client object.
     client = bigquery.Client(credentials=credentials, project=PROJECT_ID,)
     
-    print("Create tables...")
-    #all_subfolders = create_folder_list(BUCKET_NAME, 'officemate/daily/')
+    print()
+    print("Create tables name from GCS ...")
+    # all_subfolders = create_folder_list(BUCKET_NAME, 'officemate/daily/')
 
+    # This is the output from create_folder_list function
     all_subfolders = [
                         'tbinvoicecancelreason', 'arsetlmt', 'ivtxdetl', 'tbpromotion_premium', 'tbpromotion_coupon_code',
                         'ofm_tbeo_head', 'tbproductstatic_history', 'tbpromotion_campaign', 'cmspaytype', 'tbpromotion_account', 
@@ -88,10 +91,10 @@ if __name__ == "__main__":
                     #print(table_id)
 
                     # delete before create
-                    client.delete_table(table_id, not_found_ok=True)
-                    print("  - Deleted >> '{}'.".format(table_id))
-                    open_schema(filepath)
-                    print(f"  + Create >> {table_id}.") 
+                    #client.delete_table(table_id, not_found_ok=True)
+                    print(f"  - Deleted >> {table_id}.")
+                    #open_schema(filepath)
+                    print(f"  + Created >> {table_id}.") 
 
                 else:
                     print(f" !! table: {table_name} not found on GCS folders.")                
