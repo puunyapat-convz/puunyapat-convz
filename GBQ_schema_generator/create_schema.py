@@ -25,7 +25,6 @@ def convertType(data_type):
                     "numeric"       : "float",
                     "decimal"       : "float",
                     "money"         : "float",
-                    "date"          : "datetime",
                     "datetime2"     : "datetime",
                     "smalldatetime" : "datetime"
                  } 
