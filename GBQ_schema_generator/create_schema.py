@@ -13,20 +13,22 @@ def mkDir(path,jump):
 
 def convertType(data_type):
     type_table = {                     
-                    "char"          : "string",
-                    "nchar"         : "string",
-                    "nvarchar"      : "string",
-                    "varchar"       : "string",
-                    "sysname"       : "string",
-                    "bigint"        : "integer",
-                    "smallint"      : "integer",
-                    "tinyint"       : "integer",
-                    "int"           : "integer",
-                    "numeric"       : "float",
-                    "decimal"       : "float",
-                    "money"         : "float",
-                    "datetime2"     : "datetime",
-                    "smalldatetime" : "datetime"
+                    "char"          : "STRING",
+                    "nchar"         : "STRING",
+                    "nvarchar"      : "STRING",
+                    "varchar"       : "STRING",
+                    "sysname"       : "STRING",
+                    "bigint"        : "INTEGER",
+                    "smallint"      : "INTEGER",
+                    "tinyint"       : "INTEGER",
+                    "int"           : "INTEGER",
+                    "numeric"       : "FLOAT",
+                    "decimal"       : "FLOAT",
+                    "money"         : "FLOAT",
+                    "date"          : "DATE",
+                    "datetime2"     : "DATETIME",
+                    "smalldatetime" : "DATETIME"
+                    "timestamp"     : "TIMESTAMP"
                  } 
     return type_table.get(data_type, data_type)
 
