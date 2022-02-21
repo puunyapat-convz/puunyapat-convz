@@ -1,2 +1,3 @@
 credentials/
-GBQ_schema_generator/schemas/
+schemas/
+data/
