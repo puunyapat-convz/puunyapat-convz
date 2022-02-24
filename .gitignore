@@ -1,3 +1,4 @@
+.DS_Store
 credentials/
 GBQ_schema_generator/schemas
 data/
