@@ -1,0 +1,62 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "StoreID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "WorkStationNumber",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionNumber",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionDate",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionTime",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "Sequence",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "MediaNumber",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TendorType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TendorAmount",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "RefID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "LastModifiedDate",
+    "type": "STRING"
+  }
+]

@@ -1,0 +1,72 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountRuleType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "RuleIdentifierID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "QualifierID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CampaignPromotionID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "GlobalCampaignID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DateFrom",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DateTo",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "Year",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "HostCode",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "MechanicType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "MechanicValue",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CouponID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "LastUpdate",
+    "type": "STRING"
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "GlobalCampaignID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "GlobalCampaignName",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CampaignStartDate",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CampaignEndDate",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CampaignYear",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "LastUpdate",
+    "type": "STRING"
+  }
+]

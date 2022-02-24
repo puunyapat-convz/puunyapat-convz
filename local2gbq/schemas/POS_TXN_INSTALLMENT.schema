@@ -1,0 +1,117 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "StoreID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "WorkStationNumber",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionNumber",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionDate",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionTime",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "SKU",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "UPC",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "Dept",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "SubDept",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "VendorID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "BrandID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TendorType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CardNo",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "InstallmentNumberOfMonth",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "InterestRateBank",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "InterestRateCompany",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ShareInterestType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ShareInterestBank",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ShareInterestVendor",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ShareInterestCompany",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "InstallmentAmount",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "LastModifiedDate",
+    "type": "STRING"
+  }
+]

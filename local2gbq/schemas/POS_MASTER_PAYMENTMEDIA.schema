@@ -1,0 +1,27 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "MediaMemberNumber",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "MediaMemberDescription",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "MediaNumber",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "MediaDescription",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "LastUpdate",
+    "type": "STRING"
+  }
+]

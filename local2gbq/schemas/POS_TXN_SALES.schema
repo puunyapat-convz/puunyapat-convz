@@ -1,0 +1,327 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "StoreID",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "WorkStationNumber",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionNumber",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionDate",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionTime",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TransactionSequence",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "RefTicket",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "RefDate",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ReasonCode",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ReasonDescription",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CashierID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "SalesID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "GuideID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "MemberID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "CustomerID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TranslatorID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ItemizedItemID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "SKU",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "UPC",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "Dept",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "SubDept",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "Class",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "SubClass",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "VendorID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "BrandID",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountType",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "Quantity",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "PriceOverrideFlag",
+    "type": "BOOLEAN"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "PriceBeforeOverride",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "PriceAfterOverride",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID1",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount1",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag1",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID2",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount2",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag2",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID3",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount3",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag3",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID4",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount4",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag4",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID5",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount5",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag5",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID6",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount6",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag6",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID7",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount7",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag7",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID8",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount8",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag8",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID9",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount9",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag9",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountID10",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountAmount10",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "DiscountManualFlag10",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "PercentVAT",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "VAT",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "TotalSales",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "LastModifiedDate",
+    "type": "STRING"
+  }
+]
