@@ -2,12 +2,13 @@ from airflow                  import configuration, DAG
 from airflow.operators.dummy  import DummyOperator
 from airflow.operators.python import PythonOperator
 from airflow.decorators       import task
-from google.cloud             import bigquery
+
 
 import datetime as dt
 import pandas   as pd
 import logging
 import airflow.contrib.operators.gcs_to_bq as gcs2bq
+import airflow.providers.google.cloud.operators.bigquery as airflow_bq
 
 BQ_DTYPE = [
     [ "STRING", "string", "char", "nchar", "nvarchar", "varchar", "sysname", "text", "uniqueidentifier" ],
@@ -42,9 +43,17 @@ SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 def generate_schema(table_name):
     
-    schema    = [ 
-        {"mode":"NULLABLE", "name":"report_date", "type":"DATE"},
-        {"mode":"REQUIRED", "name":"run_date",    "type":"DATE"}
+    schema = [ 
+        # {
+        #     "name":"_airbyte_emitted_at",
+        #     "type":"TIMESTAMP",
+        #     "mode":"NULLABLE"
+        # },
+        # {
+        #     "name":"_airbyte_erp_tbdldetail_hashid",
+        #     "type":"STRING",
+        #     "mode":"NULLABLE"
+        # }
     ]
     schema_df = pd.read_excel(SCHEMA_FILE, sheet_name = SCHEMA_SHEET, usecols = SCHEMA_COLUMNS)
 
@@ -82,7 +91,16 @@ def generate_schema(table_name):
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
         schema.append({"mode":gbq_field_mode, "name":rows.COLUMN_NAME, "type":gbq_data_type.upper()})
+
+    # Add time partitioned field
+    schema.append({"name":"report_date", "type":"DATE","mode":"NULLABLE"})
+    schema.append({"name":"run_date","type":"DATE","mode":"REQUIRED"})
     return schema
+
+PROJECT_ID  = "central-cto-ofm-data-hub-dev"
+DATASET_ID  = "test_dataset_mahdi"
+BUCKET_NAME = "ofm-data"
+TABLE_NAME  = "ERP_TBDLDetail"
 
 with DAG(
     dag_id="daily_gcs2gbq",
@@ -95,25 +113,34 @@ with DAG(
 
     @task(task_id="print_schema")
     def print_schema():
-        schema=generate_schema("ERP_TBDLDetail")
+        schema=generate_schema(TABLE_NAME)
         print(schema)
 
     # show_schema = print_schema()
 
-    load_to_staging = gcs2bq.GoogleCloudStorageToBigQueryOperator(
-        task_id = "load_to_staging",
-        bucket  = 'ofm-data',
-        source_objects = ['ERP/daily/erp_tbdldetail/2022_03_10_1646955354604_0.jsonl'],
-        source_format= 'NEWLINE_DELIMITED_JSON',
-        destination_project_dataset_table = 'central-cto-ofm-data-hub-dev:test_dataset_mahdi.daily_ERP_TBDLDetail_stg',
-        # schema_fields = generate_schema("ERP_TBDLDetail"),
-        autodetect = True,
-        time_partitioning = { "run_date": "DAY" },
-        write_disposition = 'WRITE_TRUNCATE',
+    # load_to_staging = gcs2bq.GoogleCloudStorageToBigQueryOperator(
+    #     task_id = "load_to_staging",
+    #     google_cloud_storage_conn_id = "convz_dev_service_account",
+    #     bigquery_conn_id= "convz_dev_service_account",
+    #     bucket = BUCKET_NAME,
+    #     source_objects = [f'ERP/daily/{TABLE_NAME.lower()}/2022_03_10_1646955354604_0.jsonl'],
+    #     source_format= 'NEWLINE_DELIMITED_JSON',
+    #     destination_project_dataset_table = f'{PROJECT_ID}:{DATASET_ID}.daily_{TABLE_NAME}_stg',
+    #     autodetect = True,
+    #     time_partitioning = { "run_date": "DAY" },
+    #     write_disposition = 'WRITE_TRUNCATE',
+    #     dag = dag
+    # )
+
+    create_final_table = airflow_bq.BigQueryCreateEmptyTableOperator(
+        task_id = "create_final_table",
+        bigquery_conn_id = "convz_dev_service_account",
+        dataset_id = DATASET_ID,
+        table_id = f"daily_{TABLE_NAME}",
+        project_id = PROJECT_ID,
+        schema_fields = generate_schema(TABLE_NAME),
+        time_partitioning = { "report_date": "DAY" },
         dag = dag
     )
     
     end_task = DummyOperator(task_id="end_task")
-
-    start_task >> load_to_staging >> end_task
-    # start_task >> show_schema >> end_task
