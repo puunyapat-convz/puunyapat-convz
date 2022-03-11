@@ -34,18 +34,18 @@ PD_DTYPE = {
 log       = logging.getLogger(__name__)
 MAIN_PATH = configuration.get('core','dags_folder')
 
-# PATH FOR EXCEL SCHEMA FILE
 SCHEMAS_PATH   = f"{MAIN_PATH}/schemas"
-# SCHEMA MAPPING FROM EXCEL
 SCHEMA_FILE    = f"{SCHEMAS_PATH}/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
-# Sheet name in schema file. For examples: 'Field-Officemate', 'Field-ERP'
 SCHEMA_SHEET   = "Field-ERP"
-# Specify column names from schema file for TABLE_NAME, FIELD_NAME, DATA_TYPE and IS_NULLABLE respectively.
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 def generate_schema(table_name):
     
-    schema    = []
+    schema    = [ 
+        {"mode":"NULLABLE", "name":"report_date", "type":"DATE"},
+        {"mode":"REQUIRED", "name":"run_date",    "type":"DATE"}
+    ]
     schema_df = pd.read_excel(SCHEMA_FILE, sheet_name = SCHEMA_SHEET, usecols = SCHEMA_COLUMNS)
 
     new_columns = {
@@ -79,25 +79,41 @@ def generate_schema(table_name):
                 break
 
         if gbq_data_type == "":
-            log.error(f"!!Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
+            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
-        schema.append(bigquery.SchemaField(rows.COLUMN_NAME, gbq_data_type, mode = gbq_field_mode))    
+        schema.append({"mode":gbq_field_mode, "name":rows.COLUMN_NAME, "type":gbq_data_type.upper()})
     return schema
 
 with DAG(
     dag_id="daily_gcs2gbq",
     schedule_interval=None,
     start_date=dt.datetime(2022, 3, 1),
-    catchup=False
+    catchup=False,
+    tags=['convz_production_code'],
 ) as dag:
     start_task = DummyOperator(task_id="start_task")
 
-    @task(task_id="load_to_staging")
-    def load2stg():
-        schema = generate_schema("ERP_TBDLDetail")
-        for rows in schema:
-            print(rows)
-        # gcs2bq.GoogleCloudStorageToBigQueryOperator()
-        return 0
+    @task(task_id="print_schema")
+    def print_schema():
+        schema=generate_schema("ERP_TBDLDetail")
+        print(schema)
 
-        # gs://ofm-data/ERP/daily/erp_tbdldetail/2022_03_10_1646955354604_0.jsonl
+    # show_schema = print_schema()
+
+    load_to_staging = gcs2bq.GoogleCloudStorageToBigQueryOperator(
+        task_id = "load_to_staging",
+        bucket  = 'ofm-data',
+        source_objects = ['ERP/daily/erp_tbdldetail/2022_03_10_1646955354604_0.jsonl'],
+        source_format= 'NEWLINE_DELIMITED_JSON',
+        destination_project_dataset_table = 'central-cto-ofm-data-hub-dev:test_dataset_mahdi.daily_ERP_TBDLDetail_stg',
+        # schema_fields = generate_schema("ERP_TBDLDetail"),
+        autodetect = True,
+        time_partitioning = { "run_date": "DAY" },
+        write_disposition = 'WRITE_TRUNCATE',
+        dag = dag
+    )
+    
+    end_task = DummyOperator(task_id="end_task")
+
+    start_task >> load_to_staging >> end_task
+    # start_task >> show_schema >> end_task
