@@ -33,7 +33,7 @@ SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Exa
 PROJECT_ID   = "central-cto-ofm-data-hub-dev"
 DATASET_ID   = "test_airflow"
 BUCKET_NAME  = "ofm-data"
-TABLE_NAME   = "ERP_TBDLDetail"
+TABLE_NAME   = "ERP_TBDLDetail".lower()
 LOCATION     = "asia-southeast1" 
 
 PAYLOAD_NAME = "_airbyte_data"
