@@ -1,19 +1,21 @@
 from airflow                  import configuration, DAG
 from airflow.operators.dummy  import DummyOperator
 from airflow.operators.python import PythonOperator
+from airflow.operators.bash   import BashOperator
 from airflow.decorators       import task
-
 
 import datetime as dt
 import pandas   as pd
 import logging
 import airflow.contrib.operators.gcs_to_bq as gcs2bq
-import airflow.providers.google.cloud.operators.bigquery as airflow_bq
+import airflow.providers.google.cloud.operators.bigquery as af_bq
+
+######### VARIABLES ###########
 
 BQ_DTYPE = [
     [ "STRING", "string", "char", "nchar", "nvarchar", "varchar", "sysname", "text", "uniqueidentifier" ],
-    [ "INTEGER", "integer", "int", "tinyint", "smallint", "bigint" ],
-    [ "FLOAT", "float", "numeric", "decimal", "money" ],
+    [ "INT64", "integer", "int", "tinyint", "smallint", "bigint" ],
+    [ "FLOAT64", "float", "numeric", "decimal", "money" ],
     [ "BOOLEAN", "bit", "boolean" ],
     [ "DATE", "date" ],
     [ "TIME", "time" ],
@@ -21,52 +23,40 @@ BQ_DTYPE = [
     [ "TIMESTAMP", "timestamp" ]
 ]
 
-PD_DTYPE = {
-    "INTEGER"  : "int64",
-    "STRING"   : "object",
-    "FLOAT"    : "float64",
-    "BOOLEAN"  : "bool",
-    "DATE"     : "datetime64",
-    "TIME"     : "datetime64",
-    "DATETIME" : "datetime64",
-    "TIMESTAMP": "datetime64"
-}
-
 log       = logging.getLogger(__name__)
 MAIN_PATH = configuration.get('core','dags_folder')
 
-SCHEMAS_PATH   = f"{MAIN_PATH}/schemas"
-SCHEMA_FILE    = f"{SCHEMAS_PATH}/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
+SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-ERP"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
-# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+
+PROJECT_ID   = "central-cto-ofm-data-hub-dev"
+DATASET_ID   = "test_airflow"
+BUCKET_NAME  = "ofm-data"
+TABLE_NAME   = "ERP_TBDLDetail"
+LOCATION     = "asia-southeast1" 
+
+PAYLOAD_NAME = "_airbyte_data"
+
+###############################
 
 def generate_schema(table_name):
     
-    schema = [ 
-        # {
-        #     "name":"_airbyte_emitted_at",
-        #     "type":"TIMESTAMP",
-        #     "mode":"NULLABLE"
-        # },
-        # {
-        #     "name":"_airbyte_erp_tbdldetail_hashid",
-        #     "type":"STRING",
-        #     "mode":"NULLABLE"
-        # }
-    ]
+    schema = []
+    query_insert = f"INSERT INTO `{PROJECT_ID}.{DATASET_ID}.daily_{table_name}`\n\t(\n"
+    query_select = f"\tSELECT\n"
+
     schema_df = pd.read_excel(SCHEMA_FILE, sheet_name = SCHEMA_SHEET, usecols = SCHEMA_COLUMNS)
 
+    # Rename all Excel columns to script usable names
     new_columns = {
         SCHEMA_COLUMNS[0] : "TABLE_NAME",
         SCHEMA_COLUMNS[1] : "COLUMN_NAME",
         SCHEMA_COLUMNS[2] : "DATA_TYPE",
         SCHEMA_COLUMNS[3] : "IS_NULLABLE"
     }
-    # Rename all Excel columns to script usable names
     schema_df.rename(columns=new_columns, inplace=True)
     
-    # Slice only required columns
     schema_df['TABLE_NAME']  = schema_df['TABLE_NAME'].str.lower()
     schema_df['COLUMN_NAME'] = schema_df['COLUMN_NAME'].str.lower()       
 
@@ -91,16 +81,23 @@ def generate_schema(table_name):
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
         schema.append({"mode":gbq_field_mode, "name":rows.COLUMN_NAME, "type":gbq_data_type.upper()})
+        query_insert = f"{query_insert}\t\t{rows.COLUMN_NAME},\n"
+        query_select = f"{query_select}\t\tCAST ({PAYLOAD_NAME}.{rows.COLUMN_NAME} AS {gbq_data_type.upper()}) AS {rows.COLUMN_NAME},\n"
 
     # Add time partitioned field
-    schema.append({"name":"report_date", "type":"DATE","mode":"NULLABLE"})
-    schema.append({"name":"run_date","type":"DATE","mode":"REQUIRED"})
-    return schema
+    schema.append({"name":"report_date", "type":"DATE","mode":"REQUIRED"})
+    schema.append({"name":"run_date",    "type":"DATE","mode":"REQUIRED"})
 
-PROJECT_ID  = "central-cto-ofm-data-hub-dev"
-DATASET_ID  = "test_dataset_mahdi"
-BUCKET_NAME = "ofm-data"
-TABLE_NAME  = "ERP_TBDLDetail"
+    query_insert = f"{query_insert}\t\treport_date,\n"
+    query_insert = f"{query_insert}\t\trun_date\n\t)\n"
+
+    query_select = f"{query_select}\t\tDATE('2022-03-13') AS report_date,\n"
+    query_select = f"{query_select}\t\tDATE('2022-03-14') AS run_date\n"
+
+    query = f"{query_insert}{query_select}\tFROM `{PROJECT_ID}.{DATASET_ID}.daily_{table_name}_stg`\n"
+    query = f"{query}\tLIMIT 10"
+
+    return schema, query
 
 with DAG(
     dag_id="daily_gcs2gbq",
@@ -109,16 +106,18 @@ with DAG(
     catchup=False,
     tags=['convz_production_code'],
 ) as dag:
+
     start_task = DummyOperator(task_id="start_task")
 
-    @task(task_id="print_schema")
-    def print_schema():
-        schema=generate_schema(TABLE_NAME)
-        print(schema)
+    create_schema = PythonOperator(
+        task_id='create_schema',
+        provide_context=True,
+        dag=dag,
+        python_callable=generate_schema,
+        op_kwargs={ 'table_name': TABLE_NAME },
+    )
 
-    # show_schema = print_schema()
-
-    # load_to_staging = gcs2bq.GoogleCloudStorageToBigQueryOperator(
+    # load_to_staging = af_bq.GoogleCloudStorageToBigQueryOperator(
     #     task_id = "load_to_staging",
     #     google_cloud_storage_conn_id = "convz_dev_service_account",
     #     bigquery_conn_id= "convz_dev_service_account",
@@ -132,15 +131,46 @@ with DAG(
     #     dag = dag
     # )
 
-    create_final_table = airflow_bq.BigQueryCreateEmptyTableOperator(
-        task_id = "create_final_table",
-        bigquery_conn_id = "convz_dev_service_account",
-        dataset_id = DATASET_ID,
-        table_id = f"daily_{TABLE_NAME}",
-        project_id = PROJECT_ID,
-        schema_fields = generate_schema(TABLE_NAME),
-        time_partitioning = { "report_date": "DAY" },
-        dag = dag
+    test_jinja = BashOperator(
+        task_id='bash_op',
+        bash_command="echo '{{ task_instance.xcom_pull(task_ids=\"create_schema\")[1] }}'",
+        dag=dag,
     )
+
+    # @task(task_id="print_schema")
+    # def fetch_schema(my_task_id, **kwargs):
+    #     ti = kwargs['ti']
+    #     print(ti.xcom_pull(task_ids=my_task_id))
+
+    # print_schema = fetch_schema('create_schema')
+
+    # pull = PythonOperator(
+    #     task_id='puller',
+    #     provide_context=True,
+    #     dag=dag,
+    #     python_callable=puller_dynamic,
+    #     op_kwargs={'my_task_id': 'generate_schema'},
+    # )
+
+    # create_final_table = af_bq.BigQueryCreateEmptyTableOperator(
+    #     task_id = "create_final_table",
+    #     bigquery_conn_id = "convz_dev_service_account",
+    #     dataset_id = DATASET_ID,
+    #     table_id = f"daily_{TABLE_NAME}",
+    #     project_id = PROJECT_ID,
+    #     schema_fields = "{{ ti.xcom_pull(task_ids='create_schema')[0] }}",
+    #     time_partitioning = { "report_date": "DAY" },
+    #     dag = dag
+    # )
+
+    # extract_to_final = af_bq.BigQueryExecuteQueryOperator(
+    #     task_id  = "extract_to_final",
+    #     sql      = "{{ ti.xcom_pull(task_ids='create_schema')[1] }}",
+    #     location = LOCATION,
+    #     bigquery_conn_id = 'convz_dev_service_account',
+    #     use_legacy_sql   = False,        
+    # )
     
     end_task = DummyOperator(task_id="end_task")
+
+    start_task >> create_schema >> test_jinja >> end_task
