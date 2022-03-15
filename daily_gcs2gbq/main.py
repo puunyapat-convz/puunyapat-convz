@@ -1,14 +1,19 @@
-from airflow                  import configuration, DAG
-from airflow.operators.dummy  import DummyOperator
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash   import BashOperator
-from airflow.decorators       import task
+from airflow                   import configuration, DAG
+from airflow.operators.dummy   import DummyOperator
+from airflow.operators.python  import PythonOperator
+from airflow.decorators        import task
+from airflow.utils.decorators  import apply_defaults
+
+from airflow.providers.google.cloud.hooks.gcs          import *
+from airflow.providers.google.cloud.operators.bigquery import *
+
+from airflow.providers.google.cloud.transfers.local_to_gcs    import *
+from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import pandas   as pd
+import tempfile
 import logging
-import airflow.contrib.operators.gcs_to_bq as gcs2bq
-import airflow.providers.google.cloud.operators.bigquery as af_bq
 
 ######### VARIABLES ###########
 
@@ -39,6 +44,50 @@ LOCATION     = "asia-southeast1"
 PAYLOAD_NAME = "_airbyte_data"
 
 ###############################
+
+class ContentToGoogleCloudStorageOperator(BaseOperator):
+
+    template_fields = ('content', 'dst', 'bucket')
+
+    @apply_defaults
+    def __init__(self,
+                 content,
+                 dst,
+                 bucket,
+                 gcp_conn_id='google_cloud_default',
+                 mime_type='application/octet-stream',
+                 delegate_to=None,
+                 gzip=False,
+                 *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.content = content
+        self.dst = dst
+        self.bucket = bucket
+        self.gcp_conn_id = gcp_conn_id
+        self.mime_type = mime_type
+        self.delegate_to = delegate_to
+        self.gzip = gzip
+
+    def execute(self, context):
+
+        hook = GCSHook(
+            google_cloud_storage_conn_id=self.gcp_conn_id,
+            delegate_to=self.delegate_to
+        )
+
+        with tempfile.NamedTemporaryFile(prefix="gcs-local") as file:
+            file.write(self.content.replace('\'','\"').encode('utf-8'))
+            file.flush()
+            hook.upload(
+                bucket_name=self.bucket,
+                object_name=self.dst,
+                mime_type=self.mime_type,
+                filename=file.name,
+                gzip=self.gzip,
+        )
+        return f'gs://{self.bucket}/{self.dst}'
 
 def generate_schema(table_name):
     
@@ -80,13 +129,13 @@ def generate_schema(table_name):
         if gbq_data_type == "":
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
-        schema.append({"mode":gbq_field_mode, "name":rows.COLUMN_NAME, "type":gbq_data_type.upper()})
+        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
         query_insert = f"{query_insert}\t\t{rows.COLUMN_NAME},\n"
         query_select = f"{query_select}\t\tCAST ({PAYLOAD_NAME}.{rows.COLUMN_NAME} AS {gbq_data_type.upper()}) AS {rows.COLUMN_NAME},\n"
 
     # Add time partitioned field
-    schema.append({"name":"report_date", "type":"DATE","mode":"REQUIRED"})
-    schema.append({"name":"run_date",    "type":"DATE","mode":"REQUIRED"})
+    schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
+    schema.append({"name":"run_date", "type":"DATE", "mode":"REQUIRED"})
 
     query_insert = f"{query_insert}\t\treport_date,\n"
     query_insert = f"{query_insert}\t\trun_date\n\t)\n"
@@ -109,6 +158,20 @@ with DAG(
 
     start_task = DummyOperator(task_id="start_task")
 
+    load_to_staging = GCSToBigQueryOperator(
+        task_id = "load_to_staging",
+        google_cloud_storage_conn_id = "convz_dev_service_account",
+        bigquery_conn_id = "convz_dev_service_account",
+        bucket = BUCKET_NAME,
+        source_objects = [f'ERP/daily/{TABLE_NAME}/2022_03_10_1646955354604_0.jsonl'],
+        source_format  = 'NEWLINE_DELIMITED_JSON',
+        destination_project_dataset_table = f'{PROJECT_ID}:{DATASET_ID}.daily_{TABLE_NAME}_stg',
+        autodetect = True,
+        time_partitioning = { "run_date": "DAY" },
+        write_disposition = 'WRITE_TRUNCATE',
+        dag = dag
+    )
+
     create_schema = PythonOperator(
         task_id='create_schema',
         provide_context=True,
@@ -117,60 +180,33 @@ with DAG(
         op_kwargs={ 'table_name': TABLE_NAME },
     )
 
-    # load_to_staging = af_bq.GoogleCloudStorageToBigQueryOperator(
-    #     task_id = "load_to_staging",
-    #     google_cloud_storage_conn_id = "convz_dev_service_account",
-    #     bigquery_conn_id= "convz_dev_service_account",
-    #     bucket = BUCKET_NAME,
-    #     source_objects = [f'ERP/daily/{TABLE_NAME.lower()}/2022_03_10_1646955354604_0.jsonl'],
-    #     source_format= 'NEWLINE_DELIMITED_JSON',
-    #     destination_project_dataset_table = f'{PROJECT_ID}:{DATASET_ID}.daily_{TABLE_NAME}_stg',
-    #     autodetect = True,
-    #     time_partitioning = { "run_date": "DAY" },
-    #     write_disposition = 'WRITE_TRUNCATE',
-    #     dag = dag
-    # )
-
-    test_jinja = BashOperator(
-        task_id='bash_op',
-        bash_command="echo '{{ task_instance.xcom_pull(task_ids=\"create_schema\")[1] }}'",
-        dag=dag,
+    schema_to_gcs = ContentToGoogleCloudStorageOperator(
+        task_id = 'schema_to_gcs', 
+        content = '{{ ti.xcom_pull(task_ids="create_schema")[0] }}', 
+        dst     = f'ERP/schemas/{TABLE_NAME}.json', 
+        bucket  = BUCKET_NAME, 
+        gcp_conn_id = "convz_dev_service_account"
     )
 
-    # @task(task_id="print_schema")
-    # def fetch_schema(my_task_id, **kwargs):
-    #     ti = kwargs['ti']
-    #     print(ti.xcom_pull(task_ids=my_task_id))
+    create_final_table = BigQueryCreateEmptyTableOperator(
+        task_id = "create_final_table",
+        bigquery_conn_id = "convz_dev_service_account",
+        dataset_id = DATASET_ID,
+        table_id = f"daily_{TABLE_NAME}",
+        project_id = PROJECT_ID,
+        gcs_schema_object = '{{ ti.xcom_pull(task_ids="schema_to_gcs") }}',
+        time_partitioning = { "report_date": "DAY" },
+        dag = dag
+    )
 
-    # print_schema = fetch_schema('create_schema')
-
-    # pull = PythonOperator(
-    #     task_id='puller',
-    #     provide_context=True,
-    #     dag=dag,
-    #     python_callable=puller_dynamic,
-    #     op_kwargs={'my_task_id': 'generate_schema'},
-    # )
-
-    # create_final_table = af_bq.BigQueryCreateEmptyTableOperator(
-    #     task_id = "create_final_table",
-    #     bigquery_conn_id = "convz_dev_service_account",
-    #     dataset_id = DATASET_ID,
-    #     table_id = f"daily_{TABLE_NAME}",
-    #     project_id = PROJECT_ID,
-    #     schema_fields = "{{ ti.xcom_pull(task_ids='create_schema')[0] }}",
-    #     time_partitioning = { "report_date": "DAY" },
-    #     dag = dag
-    # )
-
-    # extract_to_final = af_bq.BigQueryExecuteQueryOperator(
-    #     task_id  = "extract_to_final",
-    #     sql      = "{{ ti.xcom_pull(task_ids='create_schema')[1] }}",
-    #     location = LOCATION,
-    #     bigquery_conn_id = 'convz_dev_service_account',
-    #     use_legacy_sql   = False,        
-    # )
+    extract_to_final = BigQueryExecuteQueryOperator(
+        task_id  = "extract_to_final",
+        sql      = '{{ ti.xcom_pull(task_ids="create_schema")[1] }}',
+        location = LOCATION,
+        bigquery_conn_id = 'convz_dev_service_account',
+        use_legacy_sql   = False,        
+    )
     
     end_task = DummyOperator(task_id="end_task")
 
-    start_task >> create_schema >> test_jinja >> end_task
+    start_task >> load_to_staging >> create_schema >> schema_to_gcs >> create_final_table >> extract_to_final >> end_task
