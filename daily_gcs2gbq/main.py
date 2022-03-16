@@ -46,7 +46,6 @@ LOCATION     = "asia-southeast1"
 BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "ERP"
 SOURCE_TYPE  = "daily"
-# TABLE_NAME   = "ERP_TBDLDetail".lower()
 
 PAYLOAD_NAME = "_airbyte_data"
 
