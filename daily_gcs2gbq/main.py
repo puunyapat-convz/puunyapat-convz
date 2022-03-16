@@ -226,11 +226,6 @@ with DAG(
 
         if iterable_list:
             for index, tm1_file in enumerate(iterable_list):
-                # say_hello = PythonOperator(
-                #     task_id=f'say_hello_from_{city}',
-                #     python_callable=_print_greeting,
-                #     op_kwargs={'city_name': city, 'greeting': 'Hello'}
-                # )
 
                 check_size = BranchPythonOperator(
                     task_id=f'check_size_{tm1_file[0]}',
