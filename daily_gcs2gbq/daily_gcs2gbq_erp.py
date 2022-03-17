@@ -263,8 +263,6 @@ with DAG(
                     }
                 )
 
-
-
                 iterable_file_list = Variable.get(
                     key=f'{SOURCE_NAME}_{tm1_table}_files',
                     default_var=['default_tm1_file'],
