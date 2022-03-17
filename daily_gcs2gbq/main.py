@@ -5,6 +5,7 @@ from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
+from airflow.exceptions        import AirflowFailException
 
 from airflow.providers.google.cloud.hooks.gcs          import *
 from airflow.providers.google.cloud.operators.bigquery import *
@@ -160,26 +161,30 @@ def _read_file(filename):
             split_line[2] = split_line[2].replace(f"gs://{BUCKET_NAME}/","")
             tm1_files.append(split_line)
 
-        return tm1_files
+        # return tm1_files
+        return [[ "tbadjusthead", 187796, "ERP/daily/tbadjusthead/2022_03_15_1647381759787_0.jsonl" ], [ "tblocationareamaster", 0, "ERP/daily/tblocationareamaster/2022_03_15_1647381823246_0.jsonl" ]]
 
 def _process_list(ti, task_id):
     tm1_file_list = ti.xcom_pull(task_ids = task_id)
     Variable.set(
-        key   = 'tm1_file_list',
+        key   = f'{SOURCE_NAME}_tm1_files',
         value = tm1_file_list,
         serialize_json = True
     )
 
 def _check_size(tm1_file):
     print(f"File {tm1_file[2]} has size {tm1_file[1]} byte(s).")
-    return f"skip_file_{tm1_file[0]}" if tm1_file[1] == 0 else f"load2stg_{tm1_file[0]}"
+    if tm1_file[1] == 0:
+        return f"skip_file_{tm1_file[0]}" 
+    else:
+        return [ f"load2stg_{tm1_file[0]}", f"create_schema_{tm1_file[0]}" ]
 
 with DAG(
     dag_id="daily_gcs2gbq",
     schedule_interval=None,
     start_date=dt.datetime(2022, 3, 1),
     catchup=False,
-    tags=['convz_production_code'],
+    tags=['convz_prod_airflow_code'],
 ) as dag:
 
     # get_table_names = BashOperator(
@@ -202,7 +207,7 @@ with DAG(
         python_callable = _read_file,
         op_kwargs={ 
             'filename' : '/Users/oH/airflow/dags/ERP_tm1_files'
-            # 'filename' : '{{ ti.xcom_pull(task_ids="get_tm1_files") }}'
+            # 'filename' : '{{ ti.xcom_pull(task_ids="create_tm1_list") }}'
         },
     )
 
@@ -213,7 +218,7 @@ with DAG(
     )
 
     iterable_list = Variable.get(
-        key='tm1_file_list',
+        key=f'{SOURCE_NAME}_tm1_files',
         default_var=['default_tm1_file'],
         deserialize_json=True
     )
@@ -234,6 +239,37 @@ with DAG(
 
                 skip_file = DummyOperator(task_id = f"skip_file_{tm1_file[0]}")
 
+                create_schema = PythonOperator(
+                    task_id=f'create_schema_{tm1_file[0]}',
+                    provide_context=True,
+                    dag=dag,
+                    python_callable=_generate_schema,
+                    op_kwargs={ 
+                        'table_name' : tm1_file[0],
+                        'report_date': '{{ yesterday_ds }}',
+                        'run_date'   : '{{ ds }}',
+                    },
+                )
+
+                schema_to_gcs = ContentToGoogleCloudStorageOperator(
+                    task_id = f'schema_to_gcs_{tm1_file[0]}', 
+                    content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_file[0]}")[0] }}}}', 
+                    dst     = f'{SOURCE_NAME}/schemas/{tm1_file[0]}.json', 
+                    bucket  = BUCKET_NAME, 
+                    gcp_conn_id = "convz_dev_service_account"
+                )
+
+                create_final_table = BigQueryCreateEmptyTableOperator(
+                    task_id = f"create_final_{tm1_file[0]}",
+                    google_cloud_storage_conn_id = "convz_dev_service_account",
+                    bigquery_conn_id = "convz_dev_service_account",
+                    dataset_id = DATASET_ID,
+                    table_id = f"daily_{tm1_file[0]}",
+                    project_id = PROJECT_ID,
+                    gcs_schema_object = f'{{{{ ti.xcom_pull(task_ids="schema_to_gcs_{tm1_file[0]}") }}}}',
+                    time_partitioning = { "report_date": "DAY" },
+                )
+
                 load_tm1_file = GCSToBigQueryOperator(
                     task_id = f"load2stg_{tm1_file[0]}",
                     google_cloud_storage_conn_id = "convz_dev_service_account",
@@ -245,67 +281,36 @@ with DAG(
                     autodetect = True,
                     time_partitioning = { "run_date": "DAY" },
                     write_disposition = 'WRITE_TRUNCATE',
-                    dag = dag
                 )
 
-                # TaskGroup level dependencies
-                check_size >> [ skip_file, load_tm1_file ]
+                flatten_rows = BigQueryExecuteQueryOperator(
+                    task_id  = f"flatten_rows_{tm1_file[0]}",
+                    location = LOCATION,
+                    sql      = f"SELECT * FROM [{PROJECT_ID}:{DATASET_ID}.daily_{tm1_file[0]}_stg]",
+                    destination_dataset_table = f"{PROJECT_ID}:{DATASET_ID}.daily_{tm1_file[0]}_flat${ '{{ yesterday_ds_nodash }}' }",
+                    time_partitioning = { "report_date": "DAY" },
+                    write_disposition = 'WRITE_TRUNCATE',
+                    bigquery_conn_id  = 'convz_dev_service_account',
+                    flatten_results   = True,
+                    use_legacy_sql    = True,        
+                )
 
+                extract_to_final = BigQueryExecuteQueryOperator(
+                    task_id  = f"extract_to_final_{tm1_file[0]}",
+                    location = LOCATION,
+                    sql      = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_file[0]}")[1] }}}}',
+                    destination_dataset_table = f"{PROJECT_ID}:{DATASET_ID}.daily_{tm1_file[0]}${ '{{ yesterday_ds_nodash }}' }",
+                    time_partitioning = { "report_date": "DAY" },
+                    write_disposition = 'WRITE_TRUNCATE',
+                    bigquery_conn_id  = 'convz_dev_service_account',
+                    use_legacy_sql    = False,
+                    trigger_rule      = 'all_success'
+                )
+
+                # TaskGroup level dependencies               
+                check_size >> [ skip_file, load_tm1_file, create_schema ] 
+                load_tm1_file >> flatten_rows >> extract_to_final
+                create_schema >> schema_to_gcs >> create_final_table >> extract_to_final
+
+    # DAG level dependencies
     read_tm1_list >> prepare_variables >> load_to_stg_tasks_group
-
-    # create_schema = PythonOperator(
-    #     task_id='create_schema',
-    #     provide_context=True,
-    #     dag=dag,
-    #     python_callable=_generate_schema,
-    #     op_kwargs={ 
-    #         'table_name' : TABLE_NAME,
-    #         'report_date': '{{ yesterday_ds }}',
-    #         'run_date'   : '{{ ds }}',
-    #     },
-    # )
-
-    # schema_to_gcs = ContentToGoogleCloudStorageOperator(
-    #     task_id = 'schema_to_gcs', 
-    #     content = '{{ ti.xcom_pull(task_ids="create_schema")[0] }}', 
-    #     dst     = f'{SOURCE_NAME}/schemas/{TABLE_NAME}.json', 
-    #     bucket  = BUCKET_NAME, 
-    #     gcp_conn_id = "convz_dev_service_account"
-    # )
-
-    # flatten_rows = BigQueryExecuteQueryOperator(
-    #     task_id  = "flatten_rows",
-    #     location = LOCATION,
-    #     sql      = f"SELECT * FROM [{PROJECT_ID}:{DATASET_ID}.daily_{TABLE_NAME}_stg]",
-    #     destination_dataset_table = f"{PROJECT_ID}:{DATASET_ID}.daily_{TABLE_NAME}_flat${ '{{ yesterday_ds_nodash }}' }",
-    #     time_partitioning = { "report_date": "DAY" },
-    #     write_disposition = 'WRITE_TRUNCATE',
-    #     bigquery_conn_id  = 'convz_dev_service_account',
-    #     flatten_results   = True,
-    #     use_legacy_sql    = True,        
-    # )
-
-    # create_final_table = BigQueryCreateEmptyTableOperator(
-    #     task_id = "create_final_table",
-    #     bigquery_conn_id = "convz_dev_service_account",
-    #     dataset_id = DATASET_ID,
-    #     table_id = f"daily_{TABLE_NAME}",
-    #     project_id = PROJECT_ID,
-    #     gcs_schema_object = '{{ ti.xcom_pull(task_ids="schema_to_gcs") }}',
-    #     time_partitioning = { "report_date": "DAY" },
-    #     dag = dag
-    # )
-
-    # extract_to_final = BigQueryExecuteQueryOperator(
-    #     task_id  = "extract_to_final",
-    #     location = LOCATION,
-    #     sql      = '{{ ti.xcom_pull(task_ids="create_schema")[1] }}',
-    #     destination_dataset_table = f"{PROJECT_ID}:{DATASET_ID}.daily_{TABLE_NAME}${ '{{ yesterday_ds_nodash }}' }",
-    #     time_partitioning = { "report_date": "DAY" },
-    #     write_disposition = 'WRITE_TRUNCATE',
-    #     bigquery_conn_id  = 'convz_dev_service_account',
-    #     use_legacy_sql    = False,
-    #     trigger_rule      = 'all_success'
-    # )
-    # load_all_to_staging >> flatten_rows >> extract_to_final
-    # create_schema >> schema_to_gcs >> create_final_table >> extract_to_final
