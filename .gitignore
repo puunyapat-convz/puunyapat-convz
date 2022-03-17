@@ -1,5 +1,5 @@
 .DS_Store
 credentials/
-schemas/
+GBQ_schema_generator/schemas
 ~$OFM-B2S_Source_Datalake_20211020-live-version.xlsx
 data/

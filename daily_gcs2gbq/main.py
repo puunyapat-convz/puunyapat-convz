@@ -161,8 +161,8 @@ def _read_file(filename):
             split_line[2] = split_line[2].replace(f"gs://{BUCKET_NAME}/","")
             tm1_files.append(split_line)
 
-        # return tm1_files
-        return [[ "tbadjusthead", 187796, "ERP/daily/tbadjusthead/2022_03_15_1647381759787_0.jsonl" ], [ "tblocationareamaster", 0, "ERP/daily/tblocationareamaster/2022_03_15_1647381823246_0.jsonl" ]]
+        return tm1_files
+        # return [[ "tbadjusthead", 187796, "ERP/daily/tbadjusthead/2022_03_15_1647381759787_0.jsonl" ], [ "tblocationareamaster", 0, "ERP/daily/tblocationareamaster/2022_03_15_1647381823246_0.jsonl" ]]
 
 def _process_list(ti, task_id):
     tm1_file_list = ti.xcom_pull(task_ids = task_id)
@@ -187,20 +187,20 @@ with DAG(
     tags=['convz_prod_airflow_code'],
 ) as dag:
 
-    # get_table_names = BashOperator(
-    #     task_id  = "get_table_names",
-    #     cwd      = MAIN_PATH,
-    #     bash_command = f"gsutil ls gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}"
-    #                     + f" | grep -v erp_ | sed '1d' | cut -d'/' -f6 > {SOURCE_NAME}_tm1_folders;"
-    #                     + f" echo {MAIN_PATH}/{SOURCE_NAME}_tm1_folders"
-    # )
+    get_table_names = BashOperator(
+        task_id  = "get_table_names",
+        cwd      = MAIN_PATH,
+        bash_command = f"gsutil ls gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}"
+                        + f" | grep -v erp_ | sed '1d' | cut -d'/' -f6 > {SOURCE_NAME}_tm1_folders;"
+                        + f" echo {MAIN_PATH}/{SOURCE_NAME}_tm1_folders"
+    )
     
-    # create_tm1_list = BashOperator(
-    #     task_id  = "create_tm1_list",
-    #     cwd      = MAIN_PATH,
-    #     bash_command = f"gsutil cp -P gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/scan_tm1_files.bash .;"
-    #                     + f" ./scan_tm1_files.bash {SOURCE_NAME} {BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE} { '{{ yesterday_ds }}' }"
-    # )
+    create_tm1_list = BashOperator(
+        task_id  = "create_tm1_list",
+        cwd      = MAIN_PATH,
+        bash_command = f"gsutil cp -P gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/scan_tm1_files.bash .;"
+                        + f" ./scan_tm1_files.bash {SOURCE_NAME} {BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE} { '{{ yesterday_ds }}' }"
+    )
     
     read_tm1_list = PythonOperator(
         task_id = 'read_tm1_list',
@@ -313,4 +313,4 @@ with DAG(
                 create_schema >> schema_to_gcs >> create_final_table >> extract_to_final
 
     # DAG level dependencies
-    read_tm1_list >> prepare_variables >> load_to_stg_tasks_group
+    get_table_names >> create_tm1_list >> read_tm1_list >> prepare_variables >> load_to_stg_tasks_group
