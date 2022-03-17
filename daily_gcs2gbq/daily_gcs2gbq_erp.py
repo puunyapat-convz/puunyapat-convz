@@ -5,7 +5,6 @@ from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
-from airflow.exceptions        import AirflowFailException
 
 from airflow.providers.google.cloud.hooks.gcs          import *
 from airflow.providers.google.cloud.operators.bigquery import *
@@ -18,7 +17,6 @@ import datetime as dt
 import pandas   as pd
 import tempfile
 import logging
-import re
 
 ######### VARIABLES ###########
 
@@ -191,8 +189,8 @@ def _check_size(tm1_file):
 
 with DAG(
     dag_id="daily_gcs2gbq_erp",
-    schedule_interval=None,
-    start_date=dt.datetime(2022, 3, 1),
+    schedule_interval="0 0 * * * ",
+    start_date=dt.datetime(2022, 3, 15),
     catchup=False,
     tags=['convz_prod_airflow_style'],
 ) as dag:
