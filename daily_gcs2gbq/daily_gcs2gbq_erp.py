@@ -190,19 +190,19 @@ def _check_size(tm1_file):
         return [ f"load2stg_{tm1_file[0]}", f"create_schema_{tm1_file[0]}" ]
 
 with DAG(
-    dag_id="daily_gcs2gbq",
+    dag_id="daily_gcs2gbq_erp",
     schedule_interval=None,
     start_date=dt.datetime(2022, 3, 1),
     catchup=False,
-    tags=['convz_prod_airflow_code'],
+    tags=['convz_prod_airflow_style'],
 ) as dag:
 
     get_table_names = BashOperator(
         task_id  = "get_table_names",
         cwd      = MAIN_PATH,
-        bash_command = f"gsutil ls gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}"
-                        + f" | grep -v erp_ | sed '1d' | cut -d'/' -f6 > {SOURCE_NAME}_tm1_folders;"
-                        + f" echo {MAIN_PATH}/{SOURCE_NAME}_tm1_folders"
+        bash_command = f"[ -d tmp ] || mkdir tmp; gsutil ls gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}"
+                        + f" | grep -v erp_ | sed '1d' | cut -d'/' -f6 > tmp/{SOURCE_NAME}_tm1_folders;"
+                        + f" echo {MAIN_PATH}/tmp/{SOURCE_NAME}_tm1_folders"
     )
 
     read_table_list = PythonOperator(
@@ -241,10 +241,10 @@ with DAG(
                     task_id  = f"create_tm1_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});"
-                                    + f' echo -n "{tm1_table}," > {SOURCE_NAME}_{tm1_table}_tm1_files;'
+                                    + f' echo -n "{tm1_table}," > tmp/{SOURCE_NAME}_{tm1_table}_tm1_files;'
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f" | tr -s ' ' ',' >> {SOURCE_NAME}_{tm1_table}_tm1_files;"
-                                    + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
+                                    + f" | tr -s ' ' ',' >> tmp/{SOURCE_NAME}_{tm1_table}_tm1_files;"
+                                    + f' echo "{MAIN_PATH}/tmp/{SOURCE_NAME}_{tm1_table}_tm1_files"'
                 )
 
                 read_tm1_list = PythonOperator(
@@ -349,7 +349,8 @@ with DAG(
                             use_legacy_sql    = False,
                             trigger_rule      = 'all_success'
                         )
-                # TaskGroup level dependencies               
+
+                # TaskGroup level dependencies
                 create_tm1_list >> read_tm1_list >> file_variables >> check_size >> [ skip_file, load_tm1_file, create_schema ]
                 load_tm1_file >> flatten_rows >> extract_to_final
                 create_schema >> schema_to_gcs >> create_final_table >> extract_to_final
