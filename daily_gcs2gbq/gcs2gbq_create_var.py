@@ -37,24 +37,6 @@ def _read_table(filename):
     return lines
     # return [ "tbadjusthead", "tblocationareamaster" ]
 
-# def _read_file(filename):
-#     with open(filename) as f:
-#         lines     = f.read().splitlines()
-#         tm1_files = []
-
-#         for index, line in enumerate(lines):
-#             split_line    = line.split(",")
-#             split_line[1] = int(split_line[1])
-#             split_line[2] = split_line[2].replace(f"gs://{BUCKET_NAME}/","")
-
-#             mode = "WRITE_TRUNCATE" if index == 0 else "WRITE_APPEND"
-
-#             split_line.append(mode)
-#             tm1_files.append(split_line)
-
-#         return tm1_files
-
-# def _process_list(ti, task_id, var_name):
 def _process_list(ti, task_id, var_name, **kwargs):
     if 'value' in kwargs:
         data_from_file = kwargs.get("value")
@@ -80,25 +62,7 @@ with DAG(
     # schedule_interval=None,
     start_date=dt.datetime(2022, 3, 16),
     catchup=False,
-    tags=['convz_prod_airflow_style'],
-    default_args={
-        'depends_on_past': False,
-        'email': ['airflow@example.com'],
-        'email_on_failure': False,
-        'email_on_retry': False,
-        # 'queue': 'bash_queue',
-        # 'pool': 'backfill',
-        # 'priority_weight': 10,
-        # 'end_date': datetime(2016, 1, 1),
-        # 'wait_for_downstream': False,
-        # 'sla': timedelta(hours=2),
-        # 'execution_timeout': timedelta(seconds=300),
-        # 'on_failure_callback': some_function,
-        # 'on_success_callback': some_other_function,
-        # 'on_retry_callback': another_function,
-        # 'sla_miss_callback': yet_another_function,
-        # 'trigger_rule': 'all_success'
-    },
+    tags=['convz_prod_airflow_style']
 ) as dag:
 
     get_table_names = BashOperator(
@@ -141,25 +105,6 @@ with DAG(
         if iterable_tables_list:
             for index, tm1_table in enumerate(iterable_tables_list):
 
-                # create_tm1_list = BashOperator(
-                #     task_id  = f"create_tm1_list_{tm1_table}",
-                #     cwd      = MAIN_PATH,
-                #     bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});"
-                #                     + f' echo -n "{tm1_table}," > tmp/{SOURCE_NAME}_{tm1_table}_tm1_files;'
-                #                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                #                     + f" | tr -s ' ' ',' >> tmp/{SOURCE_NAME}_{tm1_table}_tm1_files;"
-                #                     + f' echo "{MAIN_PATH}/tmp/{SOURCE_NAME}_{tm1_table}_tm1_files"'
-                # )
-
-                # read_tm1_list = PythonOperator(
-                #     task_id = f'read_tm1_list_{tm1_table}',
-                #     python_callable = _read_file,
-                #     op_kwargs={ 
-                #         'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}'
-                #         # 'filename' : '/Users/oH/airflow/dags/ERP_tm1_files'
-                #     },
-                # )
-
                 file_variables = PythonOperator(
                     task_id = f'file_variables_{tm1_table}',
                     python_callable = _create_var,
@@ -169,7 +114,6 @@ with DAG(
                 )
 
                 # TaskGroup load_folders_tasks_group level dependencies
-                # create_tm1_list >> read_tm1_list >> file_variables
                 file_variables
 
     # DAG level dependencies
