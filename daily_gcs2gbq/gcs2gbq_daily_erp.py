@@ -198,38 +198,11 @@ with DAG(
 
     start_task = DummyOperator(task_id = "start_task")
 
-    # get_table_names = BashOperator(
-    #     task_id  = "get_table_names",
-    #     cwd      = MAIN_PATH,
-    #     bash_command = f"[ -d tmp ] || mkdir tmp; gsutil ls gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}"
-    #                     + f" | grep -v erp_ | sed '1d' | cut -d'/' -f6 > tmp/{SOURCE_NAME}_tm1_folders;"
-    #                     + f" echo {MAIN_PATH}/tmp/{SOURCE_NAME}_tm1_folders"
-    # )
-
-    # read_table_list = PythonOperator(
-    #     task_id = 'read_table_list',
-    #     python_callable = _read_table,
-    #     op_kwargs={ 
-    #         'filename' : '{{ ti.xcom_pull(task_ids="get_table_names") }}',
-    #         # 'filename' : '/Users/oH/airflow/dags/ERP_tm1_folders'
-    #     },
-    # )
-
-    # table_variable = PythonOperator(
-    #     task_id = 'table_variable',
-    #     python_callable = _process_list,
-    #     op_kwargs = {
-    #         'task_id'  : 'read_table_list',
-    #         'var_name' : f'{SOURCE_NAME}_tables'
-    #     }
-    # )
-
     iterable_tables_list = Variable.get(
         key=f'{SOURCE_NAME}_tables',
         default_var=['default_table'],
         deserialize_json=True
     )
-
     # iterable_tables_list = [ "tbadjusthead", "tblocationareamaster" ]
 
     with TaskGroup(
@@ -382,9 +355,7 @@ with DAG(
                 create_tm1_list >> read_tm1_list >> file_variables >> remove_file_list >> load_files_tasks_group
 
     # DAG level dependencies
-    # get_table_names >> read_table_list >> table_variable >> load_folders_tasks_group
     start_task >> load_folders_tasks_group
 
 ## TO DO
 ## 1. Change BigQueryExecuteQueryOperator to BigQueryInsertJobOperator
-## 2. Separate to 2 DAGs - File variables generator & T-1 files loader - done
