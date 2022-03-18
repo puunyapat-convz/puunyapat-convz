@@ -149,12 +149,6 @@ def _generate_schema(table_name, report_date, run_date):
 
     return schema, query
 
-def _read_table(filename):
-    with open(filename) as f:
-        lines = f.read().splitlines()
-    return lines
-    # return [ "tbadjusthead", "blocationareamaster" ]
-
 def _read_file(filename):
     with open(filename) as f:
         lines     = f.read().splitlines()
@@ -189,8 +183,8 @@ def _check_size(tm1_file):
 
 with DAG(
     dag_id="gcs2gbq_daily_erp",
-    schedule_interval=None,
-    # schedule_interval="30 00 * * *",
+    # schedule_interval=None,
+    schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 3, 17),
     catchup=False,
     tags=['convz_prod_airflow_style'],
@@ -304,10 +298,10 @@ with DAG(
                             )
 
                             schema_to_gcs = ContentToGoogleCloudStorageOperator(
-                                task_id = f'schema_to_gcs_{tm1_file[0]}', 
-                                content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_file[0]}")[0] }}}}', 
-                                dst     = f'{SOURCE_NAME}/schemas/{tm1_file[0]}.json', 
-                                bucket  = BUCKET_NAME, 
+                                task_id = f'schema_to_gcs_{tm1_file[0]}',
+                                content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_file[0]}")[0] }}}}',
+                                dst     = f'{SOURCE_NAME}/schemas/{tm1_file[0]}.json',
+                                bucket  = BUCKET_NAME,
                                 gcp_conn_id = "convz_dev_service_account"
                             )
 
