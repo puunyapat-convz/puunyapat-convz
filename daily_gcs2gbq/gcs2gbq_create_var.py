@@ -82,6 +82,12 @@ with DAG(
         },
     )
 
+    remove_table_file = BashOperator(
+        task_id  = "remove_table_file",
+        cwd      = MAIN_PATH,
+        bash_command = "rm {{ ti.xcom_pull(task_ids='get_table_names') }}"
+    )
+
     table_variable = PythonOperator(
         task_id = 'table_variable',
         python_callable = _process_list,
@@ -117,4 +123,4 @@ with DAG(
                 file_variables
 
     # DAG level dependencies
-    get_table_names >> read_table_list >> table_variable >> load_folders_tasks_group
+    get_table_names >> read_table_list >> table_variable >> remove_table_file >> load_folders_tasks_group
