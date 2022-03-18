@@ -58,7 +58,7 @@ def _create_var(var_name):
 
 with DAG(
     dag_id="gcs2gbq_create_var",
-    schedule_interval="25 09 * * *",
+    schedule_interval="43 09 * * *",
     # schedule_interval=None,
     start_date=dt.datetime(2022, 3, 16),
     catchup=False,
@@ -103,7 +103,7 @@ with DAG(
     ) as load_folders_tasks_group:
 
         if iterable_tables_list:
-            for index, tm1_table in enumerate(iterable_tables_list):
+            for index, tm1_table in enumerate(iterable_tables_list):               
 
                 file_variables = PythonOperator(
                     task_id = f'file_variables_{tm1_table}',
@@ -117,4 +117,4 @@ with DAG(
                 file_variables
 
     # DAG level dependencies
-    get_table_names >> read_table_list >> table_variable >> load_folders_tasks_group                
+    get_table_names >> read_table_list >> table_variable >> load_folders_tasks_group
