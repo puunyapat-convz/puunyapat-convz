@@ -373,8 +373,6 @@ with DAG(
                 create_tm1_list >> check_tm1_list >> [ skip_table, read_tm1_list ]
                 read_tm1_list >> file_variables >> remove_file_list >> load_files_tasks_group
             
-
-
     # DAG level dependencies
     start_task >> load_folders_tasks_group
 
