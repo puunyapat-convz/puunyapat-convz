@@ -149,6 +149,18 @@ def _generate_schema(table_name, report_date, run_date):
 
     return schema, query
 
+def _check_file(tablename, filename):
+    with open(filename) as f:
+        lines  = f.read().splitlines()
+
+    split_line = lines[0].split(",")
+
+    if len(split_line) != 3:
+        log.info(f"Table [ {tablename} ] has no T-1 file(s) for this run.")
+        return f"skip_table_{tablename}"
+    else:
+        return f"read_tm1_list_{tablename}"
+
 def _read_file(filename):
     with open(filename) as f:
         lines     = f.read().splitlines()
@@ -183,9 +195,9 @@ def _check_size(tm1_file):
 
 with DAG(
     dag_id="gcs2gbq_daily_erp",
-    # schedule_interval=None,
-    schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 17),
+    schedule_interval=None,
+    # schedule_interval="40 00 * * *",
+    start_date=dt.datetime(2022, 3, 20),
     catchup=False,
     tags=['convz_prod_airflow_style'],
 ) as dag:
@@ -216,6 +228,17 @@ with DAG(
                                     + f" | tr -s ' ' ',' >> tmp/{SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/tmp/{SOURCE_NAME}_{tm1_table}_tm1_files"'
                 )
+
+                check_tm1_list = BranchPythonOperator(
+                    task_id=f'check_tm1_list_{tm1_table}',
+                    python_callable=_check_file,
+                    op_kwargs = { 
+                        'tablename' : tm1_table,
+                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}'
+                    }
+                )
+
+                skip_table = DummyOperator(task_id = f"skip_table_{tm1_table}")
 
                 read_tm1_list = PythonOperator(
                     task_id = f'read_tm1_list_{tm1_table}',
@@ -346,7 +369,8 @@ with DAG(
                             create_schema >> schema_to_gcs >> create_final_table >> extract_to_final
 
                 # TaskGroup load_folders_tasks_group level dependencies
-                create_tm1_list >> read_tm1_list >> file_variables >> remove_file_list >> load_files_tasks_group
+                create_tm1_list >> check_tm1_list >> [ skip_table, read_tm1_list ]
+                read_tm1_list >> file_variables >> remove_file_list >> load_files_tasks_group
 
     # DAG level dependencies
     start_task >> load_folders_tasks_group
