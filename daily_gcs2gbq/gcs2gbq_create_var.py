@@ -7,17 +7,15 @@ from airflow.utils.task_group  import TaskGroup
 
 import datetime as dt
 import logging
+import pathlib
 
 from pandas import value_counts
 
 ######### VARIABLES ###########
 
 log       = logging.getLogger(__name__)
-MAIN_PATH = configuration.get('core','dags_folder')
-
-SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
-SCHEMA_SHEET   = "Field-ERP"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+path      = pathlib.Path(configuration.get('core','dags_folder'))
+MAIN_PATH = str(path.parent) + "/data"
 
 PROJECT_ID   = "central-cto-ofm-data-hub-dev"
 DATASET_ID   = "test_airflow"
@@ -52,15 +50,15 @@ def _process_list(ti, task_id, var_name, **kwargs):
 def _create_var(var_name):
     Variable.set(
         key   = var_name,
-        value = "",
+        value = [],
         serialize_json = True
     )
 
 with DAG(
     dag_id="gcs2gbq_create_var",
-    schedule_interval="43 09 * * *",
-    # schedule_interval=None,
-    start_date=dt.datetime(2022, 3, 16),
+    # schedule_interval="55 04 * * *",
+    schedule_interval=None,
+    start_date=dt.datetime(2022, 3, 23),
     catchup=False,
     tags=['convz_prod_airflow_style']
 ) as dag:
@@ -68,9 +66,9 @@ with DAG(
     get_table_names = BashOperator(
         task_id  = "get_table_names",
         cwd      = MAIN_PATH,
-        bash_command = f"[ -d tmp ] || mkdir tmp; gsutil ls gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}"
-                        + f" | grep -v erp_ | sed '1d' | cut -d'/' -f6 > tmp/{SOURCE_NAME}_tm1_folders;"
-                        + f" echo {MAIN_PATH}/tmp/{SOURCE_NAME}_tm1_folders"
+        bash_command = f"gsutil ls gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}"
+                        + f" | grep -v erp_ | sed '1d' | cut -d'/' -f6 > {SOURCE_NAME}_tm1_folders; cat {SOURCE_NAME}_tm1_folders;"
+                        + f" echo {MAIN_PATH}/{SOURCE_NAME}_tm1_folders"
     )
 
     read_table_list = PythonOperator(
