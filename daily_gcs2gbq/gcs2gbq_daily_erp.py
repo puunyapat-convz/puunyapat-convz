@@ -17,6 +17,7 @@ import datetime as dt
 import pandas   as pd
 import tempfile
 import logging
+import pathlib
 
 ######### VARIABLES ###########
 
@@ -32,9 +33,10 @@ BQ_DTYPE = [
 ]
 
 log       = logging.getLogger(__name__)
-MAIN_PATH = configuration.get('core','dags_folder')
+path      = pathlib.Path(configuration.get('core','dags_folder'))
+MAIN_PATH = str(path.parent) + "/data"
 
-SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
+SCHEMA_FILE    = str(path) + "/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-ERP"
 SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
@@ -197,7 +199,7 @@ with DAG(
     dag_id="gcs2gbq_daily_erp",
     schedule_interval=None,
     # schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 20),
+    start_date=dt.datetime(2022, 3, 23),
     catchup=False,
     tags=['convz_prod_airflow_style'],
 ) as dag:
