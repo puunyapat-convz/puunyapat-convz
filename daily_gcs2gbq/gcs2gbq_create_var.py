@@ -81,7 +81,7 @@ with DAG(
     remove_table_file = BashOperator(
         task_id  = "remove_table_file",
         cwd      = MAIN_PATH,
-        bash_command = "rm {{ ti.xcom_pull(task_ids='get_table_names') }}"
+        bash_command = "rm -f {{ ti.xcom_pull(task_ids='get_table_names') }}"
     )
 
     table_variable = PythonOperator(
