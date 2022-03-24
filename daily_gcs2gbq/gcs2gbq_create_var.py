@@ -9,8 +9,6 @@ import datetime as dt
 import logging
 import pathlib
 
-from pandas import value_counts
-
 ######### VARIABLES ###########
 
 log       = logging.getLogger(__name__)
@@ -56,9 +54,9 @@ def _create_var(var_name):
 
 with DAG(
     dag_id="gcs2gbq_create_var",
-    # schedule_interval="55 04 * * *",
-    schedule_interval=None,
-    start_date=dt.datetime(2022, 3, 23),
+    schedule_interval="00 00 * * *",
+    # schedule_interval=None,
+    start_date=dt.datetime(2022, 3, 24),
     catchup=False,
     tags=['convz_prod_airflow_style']
 ) as dag:
