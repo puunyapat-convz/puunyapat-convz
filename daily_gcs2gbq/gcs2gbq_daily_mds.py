@@ -99,7 +99,7 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
         )
         return f'gs://{self.bucket}/{self.dst}'
 
-def _generate_schema(table_name, tbidx, report_date, run_date):
+def _generate_schema(table_name, report_date, run_date):
     
     schema = []
     query  = f"SELECT\n"
@@ -148,7 +148,7 @@ def _generate_schema(table_name, tbidx, report_date, run_date):
     query = f"{query}\tDATE('{report_date}') AS report_date,\n"
     query = f"{query}\tDATE('{run_date}') AS run_date\n"
 
-    query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}.{SOURCE_TYPE}_{table_name}_flat_{tbidx}`\n"
+    query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}.{SOURCE_TYPE}_{table_name}_flat`\n"
     # query = f"{query}WHERE DATE(_PARTITIONTIME) = '{report_date}'"
     # query = f"{query}LIMIT 10"
 
@@ -187,7 +187,7 @@ def _read_file(filename):
         ## [2] = GCS URI
         ## [3] = Write disposition method
 
-        for index, line in enumerate(lines):
+        for line in lines:
             split_line    = line.split(",")
             split_line[1] = int(split_line[1])
             split_line[2] = split_line[2].replace(f"gs://{BUCKET_NAME}/", "")
@@ -211,6 +211,11 @@ def _process_list(ti, task_id, var_name):
     )
 
 def _check_variable(table_name, tm1_varible):
+    tm1_varible = Variable.get(
+        key=f'{SOURCE_NAME}_{table_name}_files', 
+        deserialize_json=True
+    )[1]
+
     if len(tm1_varible) == 0:
         log.info(f"Table [ {table_name} ] has no T-1 file to load.")        
         return f"skip_load_{table_name}"
@@ -304,7 +309,7 @@ with DAG(
                     python_callable=_check_variable,
                     op_kwargs = {
                         'table_name'  : tm1_table,
-                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="file_variables_{tm1_table}")[1] }}}}'
+                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[1] }}}}'
                     }
                 )
                             
@@ -317,7 +322,6 @@ with DAG(
                     python_callable=_generate_schema,
                     op_kwargs={ 
                         'table_name' : tm1_table,
-                        'tbidx'      : index,
                         'report_date': '{{ yesterday_ds }}',
                         'run_date'   : '{{ ds }}'
                     },
@@ -361,7 +365,7 @@ with DAG(
                     google_cloud_storage_conn_id = "convz_dev_service_account",
                     bigquery_conn_id = "convz_dev_service_account",
                     bucket = BUCKET_NAME,
-                    source_objects = f'{{{{ ti.xcom_pull(task_ids="file_variables_{tm1_table}")[1] }}}}',
+                    source_objects = Variable.get(key=f'{SOURCE_NAME}_{tm1_table}_files',deserialize_json=True)[1],
                     source_format  = 'NEWLINE_DELIMITED_JSON',
                     destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}_stg",
                     autodetect = True,
