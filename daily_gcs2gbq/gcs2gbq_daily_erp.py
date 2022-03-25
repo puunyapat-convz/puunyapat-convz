@@ -17,7 +17,6 @@ import datetime as dt
 import pandas   as pd
 import tempfile
 import logging
-import pathlib
 
 ######### VARIABLES ###########
 
@@ -38,15 +37,15 @@ BQ_DTYPE = [
 ]
 
 log       = logging.getLogger(__name__)
-path      = pathlib.Path(configuration.get('core','dags_folder'))
-MAIN_PATH = str(path.parent) + "/data"
+path      = configuration.get('core','dags_folder')
+MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-ERP"
 SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_ID   = "central-cto-ofm-data-hub-dev"
-DATASET_ID   = "test_airflow"
+DATASET_ID   = "airflow_test_erp"
 LOCATION     = "asia-southeast1" 
 
 BUCKET_NAME  = "ofm-data"
@@ -227,9 +226,9 @@ def _check_size(tm1_file, index):
 
 with DAG(
     dag_id="gcs2gbq_daily_erp",
-    schedule_interval=None,
-    # schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 23),
+    # schedule_interval=None,
+    schedule_interval="40 00 * * *",
+    start_date=dt.datetime(2022, 3, 24),
     catchup=False,
     tags=['convz_prod_airflow_style'],
 ) as dag:
@@ -256,9 +255,8 @@ with DAG(
                     task_id  = f"create_tm1_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});"
-                                    # + f' echo -n "{tm1_table}," > {SOURCE_NAME}_{tm1_table}_tm1_files;'
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' > {SOURCE_NAME}_{tm1_table}_tm1_files;"
+                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
                 )
 
