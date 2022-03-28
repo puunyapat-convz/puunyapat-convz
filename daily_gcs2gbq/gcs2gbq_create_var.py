@@ -48,7 +48,7 @@ def _process_list(ti, task_id, var_name, **kwargs):
 def _create_var(var_name):
     Variable.set(
         key   = var_name,
-        value = [],
+        value = [[],[]],
         serialize_json = True
     )
 
