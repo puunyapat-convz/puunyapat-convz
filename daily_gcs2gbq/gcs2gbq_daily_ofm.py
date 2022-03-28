@@ -45,7 +45,7 @@ SCHEMA_SHEET   = "Field-Officemate"
 SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_ID   = "central-cto-ofm-data-hub-dev"
-DATASET_ID   = "airflow_test_erp"
+DATASET_ID   = "airflow_test_ofm"
 LOCATION     = "asia-southeast1" 
 
 BUCKET_NAME  = "ofm-data"
@@ -213,7 +213,7 @@ with DAG(
     dag_id="gcs2gbq_daily_ofm",
     # schedule_interval=None,
     schedule_interval="00 01 * * *",
-    start_date=dt.datetime(2022, 3, 28),
+    start_date=dt.datetime(2022, 3, 29),
     catchup=False,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
