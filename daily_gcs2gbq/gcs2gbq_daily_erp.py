@@ -202,14 +202,6 @@ def _read_file(filename):
 
         return gcs_list
 
-def _process_list(ti, task_id, var_name):
-    data_from_file = ti.xcom_pull(task_ids = task_id)
-    Variable.set(
-        key   = var_name,
-        value = data_from_file,
-        serialize_json = True
-    )
-
 def _check_xcom(table_name, tm1_varible):
     if len(tm1_varible) == 0:
         log.info(f"Table [ {table_name} ] has no T-1 file to load.")        
@@ -218,10 +210,10 @@ def _check_xcom(table_name, tm1_varible):
         return [ f"drop_temp_{table_name}", f"create_schema_{table_name}" ]
 
 with DAG(
-    dag_id="gcs2gbq_daily_mds",
-    schedule_interval=None,
-    # schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 27),
+    dag_id="gcs2gbq_daily_erp",
+    # schedule_interval=None,
+    schedule_interval="40 00 * * *",
+    start_date=dt.datetime(2022, 3, 28),
     catchup=False,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
@@ -259,8 +251,7 @@ with DAG(
                     task_id  = f"create_tm1_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});"
-                                    # + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/2022_02_11*.jsonl"'
+                                    + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
                 )
