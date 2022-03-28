@@ -54,9 +54,9 @@ def _create_var(var_name):
 
 with DAG(
     dag_id="gcs2gbq_create_var",
-    schedule_interval="00 00 * * *",
-    # schedule_interval=None,
-    start_date=dt.datetime(2022, 3, 24),
+    # schedule_interval="00 00 * * *",
+    schedule_interval=None,
+    start_date=dt.datetime(2022, 3, 27),
     catchup=False,
     tags=['convz_prod_airflow_style']
 ) as dag:

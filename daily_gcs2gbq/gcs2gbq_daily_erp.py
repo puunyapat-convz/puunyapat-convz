@@ -226,7 +226,7 @@ with DAG(
     dag_id="gcs2gbq_daily_erp",
     schedule_interval=None,
     # schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 27),
+    start_date=dt.datetime(2022, 3, 26),
     catchup=False,
     tags=['convz_prod_airflow_style'],
 ) as dag:
@@ -249,7 +249,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "erp_tbdldetail" ]
+    # iterable_tables_list = [ "tbproductqcstatusmaster" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
@@ -263,8 +263,7 @@ with DAG(
                     task_id  = f"create_tm1_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});"
-                                    # + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/2022_03_24*.jsonl"'
+                                    + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
                 )
