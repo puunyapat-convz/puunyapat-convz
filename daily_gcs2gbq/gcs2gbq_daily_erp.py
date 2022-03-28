@@ -354,11 +354,10 @@ with DAG(
                     use_legacy_sql    = False,
                 )
 
-                ## Each valid line contains
+                ## Each line contains
                 ## [0] = Tablename
                 ## [1] = Filesize
                 ## [2] = GCS URI
-                ## [3] = Write disposition method
                 load_tm1_files = GCSToBigQueryOperator(
                     task_id = f"load2stg_{tm1_table}",
                     google_cloud_storage_conn_id = "convz_dev_service_account",
@@ -371,18 +370,6 @@ with DAG(
                     time_partitioning = { "run_date": "DAY" },
                     write_disposition = "WRITE_TRUNCATE",
                 )
-
-                # flatten_rows = BigQueryExecuteQueryOperator(
-                #     task_id  = f"flatten_rows_{tm1_table}",
-                #     location = LOCATION,
-                #     sql      = f"SELECT * FROM [{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}_stg]",
-                #     destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}_flat",
-                #     time_partitioning = { "report_date": "DAY" },
-                #     write_disposition = "WRITE_TRUNCATE",
-                #     bigquery_conn_id  = 'convz_dev_service_account',
-                #     flatten_results   = True,
-                #     use_legacy_sql    = True,
-                # )
 
                 extract_to_final = BigQueryExecuteQueryOperator(
                     task_id  = f"extract_to_final_{tm1_table}",
@@ -400,7 +387,6 @@ with DAG(
                 create_tm1_list >> check_tm1_list >> [ skip_table, read_tm1_list ]
                 read_tm1_list >> file_variables >> remove_file_list >> check_variable >> [ skip_load, create_schema, drop_temp_tables ]
 
-                # drop_temp_tables >> load_tm1_files >> flatten_rows >> extract_to_final
                 drop_temp_tables >> load_tm1_files >> extract_to_final
                 create_schema >> schema_to_gcs >> create_final_table >> extract_to_final
                 extract_to_final >> end_task                
