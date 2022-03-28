@@ -19,7 +19,7 @@ DATASET_ID   = "test_airflow"
 LOCATION     = "asia-southeast1" 
 
 BUCKET_NAME  = "ofm-data"
-SOURCE_NAME  = [ "ERP", "MDS" ] 
+SOURCE_NAME  = [ "ERP", "MDS", "officemate" ] 
 SOURCE_TYPE  = "daily"
 
 ###############################
