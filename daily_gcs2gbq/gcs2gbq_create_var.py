@@ -3,7 +3,6 @@ from airflow.operators.python  import PythonOperator
 from airflow.operators.bash    import BashOperator
 from airflow.models            import Variable
 from airflow.operators.dummy   import DummyOperator
-# from airflow.utils.task_group  import TaskGroup
 
 import datetime as dt
 import logging
@@ -32,13 +31,13 @@ def _read_table(source, filename):
         key   = f'{source}_tables',
         value = lines,
         serialize_json = True
-    )    
+    )
 
 with DAG(
     dag_id="gcs2gbq_create_var",
     # schedule_interval="00 00 * * *",
     schedule_interval=None,
-    start_date=dt.datetime(2022, 3, 27),
+    start_date=dt.datetime(2022, 3, 28),
     catchup=False,
     tags=['convz_prod_airflow_style']
 ) as dag:
@@ -70,7 +69,7 @@ with DAG(
             task_id  = f"remove_{SOURCE}_list",
             cwd      = MAIN_PATH,
             trigger_rule = 'all_done',
-            bash_command = "rm -f {{ ti.xcom_pull(task_ids='get_{SOURCE}_tables') }}"
+            bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='get_{SOURCE}_tables') }}}}"
         )
 
         ## loop level dependencies
