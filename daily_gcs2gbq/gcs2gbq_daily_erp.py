@@ -211,8 +211,8 @@ def _check_xcom(table_name, tm1_varible):
 
 with DAG(
     dag_id="gcs2gbq_daily_erp",
-    # schedule_interval=None,
-    schedule_interval="40 00 * * *",
+    schedule_interval=None,
+    # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 3, 28),
     catchup=False,
     tags=['convz_prod_airflow_style'],
