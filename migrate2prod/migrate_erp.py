@@ -1,5 +1,5 @@
 from airflow                   import configuration, DAG
-from airflow.operators.python  import PythonOperator
+from airflow.operators.python  import PythonOperator, BranchPythonOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
@@ -167,6 +167,7 @@ def _create_var(table_name, data):
         value = new_data,
         serialize_json = True
     )
+    return [ f"drop_list_{tm1_table}", f"create_schema_{tm1_table}" ]
 
 def _remove_var(table_name):
     Variable.delete(key = f'{SOURCE_NAME}_{table_name}_report_date')
@@ -202,12 +203,12 @@ with DAG(
 
     end_task   = DummyOperator(task_id = "end_task")
 
-    iterable_tables_list = Variable.get(
-        key=f'{SOURCE_NAME}_tables',
-        default_var=['default_table'],
-        deserialize_json=True
-    )
-    # iterable_tables_list = [ "tbproductbommaster" ]
+    # iterable_tables_list = Variable.get(
+    #     key=f'{SOURCE_NAME}_tables',
+    #     default_var=['default_table'],
+    #     deserialize_json=True
+    # )
+    iterable_tables_list = [ "tbproductbommaster" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
@@ -237,7 +238,7 @@ with DAG(
                     selected_fields='report_date'
                 )
 
-                create_var = PythonOperator(
+                create_var = BranchPythonOperator(
                     task_id=f'create_var_{tm1_table}',
                     python_callable = _create_var,
                     op_kwargs={ 
@@ -246,16 +247,21 @@ with DAG(
                     },
                 )
 
+                drop_list = BigQueryDeleteTableOperator(
+                    task_id = f"drop_list_{tm1_table}",
+                    gcp_conn_id  = "convz_dev_service_account",
+                    ignore_if_missing = True,
+                    deletion_dataset_table = f"{PROJECT_SRC}.{DATASET_SRC}.{tm1_table}_report_date",
+                )
+
                 create_schema = PythonOperator(
-                        task_id=f'create_schema_{tm1_table}',
-                        provide_context=True,
-                        dag=dag,
-                        python_callable=_generate_schema,
-                        op_kwargs={ 
-                            'table_name' : tm1_table,
-                            'report_date': '{{ ds }}',
-                            'run_date'   : '{{ ds }}'
-                        },
+                    task_id=f'create_schema_{tm1_table}',
+                    python_callable=_generate_schema,
+                    op_kwargs={ 
+                        'table_name' : tm1_table,
+                        'report_date': '{{ ds }}',
+                        'run_date'   : '{{ ds }}'
+                    },
                 )
 
                 schema_to_gcs = ContentToGoogleCloudStorageOperator(
@@ -266,7 +272,7 @@ with DAG(
                     gcp_conn_id = "convz_dev_service_account"
                 )
 
-                create_final_table = BigQueryCreateEmptyTableOperator(
+                create_prod_table = BigQueryCreateEmptyTableOperator(
                     task_id = f"create_final_{tm1_table}",
                     google_cloud_storage_conn_id = "convz_dev_service_account",
                     bigquery_conn_id = "convz_dev_service_account",
@@ -277,17 +283,9 @@ with DAG(
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
-                drop_list = BigQueryDeleteTableOperator(
-                    task_id = f"drop_list_{tm1_table}",
-                    trigger_rule = 'all_done',
-                    gcp_conn_id  = "convz_dev_service_account",
-                    ignore_if_missing = True,
-                    deletion_dataset_table = f"{PROJECT_SRC}.{DATASET_SRC}.{tm1_table}_report_date",
-                )
-
                 remove_var = PythonOperator(
                     task_id = f"remove_var_{tm1_table}",
-                    trigger_rule = 'all_done',
+                    # trigger_rule = 'all_success',
                     python_callable = _remove_var,
                     op_kwargs = { 'table_name' : tm1_table }
                 )
@@ -329,10 +327,12 @@ with DAG(
                             )
 
                             # Date level dependencies
-                            update_query >> extract_to_prod
+                            update_query >> extract_to_prod 
 
                 # Table level dependencies
-                list_report_dates >> get_list >> create_var >> create_schema >> schema_to_gcs >> create_final_table >> migrate_date_group >> drop_list >> remove_var
+                list_report_dates >> get_list >> create_var >> [ drop_list, create_schema ]
+                drop_list >> end_task
+                create_schema >> schema_to_gcs >> create_prod_table >> migrate_date_group >> remove_var
 
     # DAG level dependencies
     start_task >> create_dataset >> migrate_tasks_group >> end_task
