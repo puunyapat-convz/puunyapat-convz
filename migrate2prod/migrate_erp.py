@@ -1,6 +1,5 @@
 from airflow                   import configuration, DAG
-from airflow.operators.python  import PythonOperator, BranchPythonOperator
-from airflow.operators.bash    import BashOperator
+from airflow.operators.python  import PythonOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
@@ -14,7 +13,9 @@ from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import pandas   as pd
+import tempfile
 import logging
+import json
 
 ######### VARIABLES ###########
 
@@ -59,6 +60,51 @@ FIELD_PREFIX = ""
 
 ###############################
 
+class ContentToGoogleCloudStorageOperator(BaseOperator):
+
+    template_fields = ('content', 'dst', 'bucket')
+
+    def __init__(self,
+                 content,
+                 dst,
+                 bucket,
+                 gcp_conn_id='google_cloud_default',
+                 mime_type='application/octet-stream',
+                 delegate_to=None,
+                 gzip=False,
+                 *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.content = content
+        self.dst = dst
+        self.bucket = bucket
+        self.gcp_conn_id = gcp_conn_id
+        self.mime_type = mime_type
+        self.delegate_to = delegate_to
+        self.gzip = gzip
+
+    def execute(self, context):
+
+        hook = GCSHook(
+            google_cloud_storage_conn_id=self.gcp_conn_id,
+            delegate_to=self.delegate_to
+        )
+
+        json_data = json.dumps(self.content, indent=4)
+
+        with tempfile.NamedTemporaryFile(prefix="gcs-local") as file:
+            file.write(json_data.encode('utf-8'))
+            file.flush()
+            hook.upload(
+                bucket_name=self.bucket,
+                object_name=self.dst,
+                mime_type=self.mime_type,
+                filename=file.name,
+                gzip=self.gzip,
+        )
+        return f'gs://{self.bucket}/{self.dst}'
+
 def _generate_schema(table_name, report_date, run_date):
     
     schema = []
@@ -99,7 +145,7 @@ def _generate_schema(table_name, report_date, run_date):
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
         schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
-        query = f"{query}\tCAST ({FIELD_PREFIX}{rows.COLUMN_NAME} AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
+        query = f"{query}\tCAST (`{FIELD_PREFIX}{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
@@ -121,6 +167,9 @@ def _create_var(table_name, data):
         value = new_data,
         serialize_json = True
     )
+
+def _remove_var(table_name):
+    Variable.delete(key = f'{SOURCE_NAME}_{table_name}_report_date')
 
 def _update_query(report_date, run_date, sql):
     sql_lines = sql.splitlines(True)
@@ -158,7 +207,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "tbadjustdetail" ]
+    # iterable_tables_list = [ "tbproductbommaster" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
@@ -209,6 +258,14 @@ with DAG(
                         },
                 )
 
+                schema_to_gcs = ContentToGoogleCloudStorageOperator(
+                    task_id = f'schema_to_gcs_{tm1_table}',
+                    content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[0] }}}}',
+                    dst     = f'{SOURCE_NAME}/schemas/{tm1_table}.json',
+                    bucket  = BUCKET_NAME,
+                    gcp_conn_id = "convz_dev_service_account"
+                )
+
                 create_final_table = BigQueryCreateEmptyTableOperator(
                     task_id = f"create_final_{tm1_table}",
                     google_cloud_storage_conn_id = "convz_dev_service_account",
@@ -217,25 +274,27 @@ with DAG(
                     dataset_id = DATASET_DST,
                     table_id = f"{tm1_table}_daily_source",
                     gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/{tm1_table}.json',
-                    time_partitioning = { "report_date": "DAY" },
+                    time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
                 drop_list = BigQueryDeleteTableOperator(
                     task_id = f"drop_list_{tm1_table}",
                     trigger_rule = 'all_done',
                     gcp_conn_id  = "convz_dev_service_account",
+                    ignore_if_missing = True,
                     deletion_dataset_table = f"{PROJECT_SRC}.{DATASET_SRC}.{tm1_table}_report_date",
                 )
 
                 remove_var = PythonOperator(
                     task_id = f"remove_var_{tm1_table}",
                     trigger_rule = 'all_done',
-                    python_callable = Variable.delete(key = f'{SOURCE_NAME}_{tm1_table}_report_date')
+                    python_callable = _remove_var,
+                    op_kwargs = { 'table_name' : tm1_table }
                 )
 
                 iterable_date_list = Variable.get(
                     key=f'{SOURCE_NAME}_{tm1_table}_report_date',
-                    default_var=['default_table'],
+                    default_var=['2000-01-01'],
                     deserialize_json=True
                 )
                 # iterable_date_list = [ "2022-01-21" ]
@@ -263,7 +322,7 @@ with DAG(
                                 location = LOCATION,
                                 sql      = f'{{{{ ti.xcom_pull(task_ids="update_query_{tm1_table}_{report_date}") }}}}',
                                 destination_dataset_table = f"{PROJECT_DST}.{DATASET_DST}.{tm1_table}_{SOURCE_TYPE}_source$" + report_date.replace("-",''),
-                                time_partitioning = { "report_date": "DAY" },
+                                time_partitioning = { "field":"report_date", "type":"DAY" },
                                 write_disposition = "WRITE_TRUNCATE",
                                 bigquery_conn_id  = 'convz_dev_service_account',
                                 use_legacy_sql    = False,
@@ -273,7 +332,7 @@ with DAG(
                             update_query >> extract_to_prod
 
                 # Table level dependencies
-                list_report_dates >> get_list >> create_var >> create_schema >> create_final_table >> migrate_date_group >> drop_list >> remove_var
+                list_report_dates >> get_list >> create_var >> create_schema >> schema_to_gcs >> create_final_table >> migrate_date_group >> drop_list >> remove_var
 
     # DAG level dependencies
     start_task >> create_dataset >> migrate_tasks_group >> end_task

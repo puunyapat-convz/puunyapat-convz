@@ -142,7 +142,7 @@ def _generate_schema(table_name, report_date, run_date):
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
         schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
-        query = f"{query}\tCAST ({PAYLOAD_NAME}.{rows.COLUMN_NAME} AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
+        query = f"{query}\tCAST (`{PAYLOAD_NAME}.{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
@@ -322,7 +322,7 @@ with DAG(
                     table_id = f"daily_{tm1_table}",
                     project_id = PROJECT_ID,
                     gcs_schema_object = f'{{{{ ti.xcom_pull(task_ids="schema_to_gcs_{tm1_table}") }}}}',
-                    time_partitioning = { "report_date": "DAY" },
+                    time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
                 drop_temp_tables = BigQueryDeleteTableOperator(
@@ -342,7 +342,7 @@ with DAG(
                     source_format  = 'NEWLINE_DELIMITED_JSON',
                     destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}_stg",
                     autodetect = True,
-                    time_partitioning = { "run_date": "DAY" },
+                    time_partitioning = { "field":"report_date", "type":"DAY" },
                     write_disposition = "WRITE_TRUNCATE",
                 )
 
@@ -351,7 +351,7 @@ with DAG(
                     location = LOCATION,
                     sql      = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
                     destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}${{{{ yesterday_ds_nodash }}}}",
-                    time_partitioning = { "report_date": "DAY" },
+                    time_partitioning = { "field":"report_date", "type":"DAY" },
                     write_disposition = "WRITE_TRUNCATE",
                     bigquery_conn_id  = 'convz_dev_service_account',
                     use_legacy_sql    = False,
