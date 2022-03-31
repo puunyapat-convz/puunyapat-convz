@@ -151,8 +151,8 @@ def _generate_schema(table_name, report_date, run_date):
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
     schema.append({"name":"run_date", "type":"DATE", "mode":"REQUIRED"})
 
-    query = f"{query}\tDATE('{report_date}') AS report_date,\n"
-    query = f"{query}\tDATE('{run_date}') AS run_date\n"
+    query = f"{query}\tDATE('{report_date}') AS `report_date`,\n"
+    query = f"{query}\tDATE('{run_date}') AS `run_date`\n"
 
     query = f"{query}FROM `{PROJECT_SRC}.{DATASET_SRC}.{SOURCE_TYPE}_{table_name}`\n"
     query = f"{query}WHERE report_date = '{report_date}'"
