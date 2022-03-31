@@ -145,7 +145,7 @@ def _generate_schema(table_name, report_date, run_date):
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
         schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
-        query = f"{query}\tCAST (`{FIELD_PREFIX}{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
+        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
