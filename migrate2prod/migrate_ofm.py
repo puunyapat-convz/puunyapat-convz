@@ -217,12 +217,12 @@ with DAG(
 
     end_task   = DummyOperator(task_id = "end_task")
 
-    # iterable_tables_list = Variable.get(
-    #     key=f'{SOURCE_NAME}_tables',
-    #     default_var=['default_table'],
-    #     deserialize_json=True
-    # )
-    iterable_tables_list = [ "tbaccount_segment_master" ]
+    iterable_tables_list = Variable.get(
+        key=f'{SOURCE_NAME}_tables',
+        default_var=['default_table'],
+        deserialize_json=True
+    )
+    # iterable_tables_list = [ "tbaccount_segment_master" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
