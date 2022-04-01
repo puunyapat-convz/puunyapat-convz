@@ -339,7 +339,7 @@ with DAG(
                     location = LOCATION,
                     gcp_conn_id = 'convz_dev_service_account',
                     ignore_if_missing = True,
-                    deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
+                    deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table.lower()}_{SOURCE_TYPE}_stg"
                 )
 
                 load_tm1_files = GCSToBigQueryOperator(
