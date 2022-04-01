@@ -339,7 +339,7 @@ with DAG(
                     location = LOCATION,
                     gcp_conn_id = 'convz_dev_service_account',
                     ignore_if_missing = True,
-                    deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table.lower()}_{SOURCE_TYPE}_stg"
+                    deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
                 load_tm1_files = GCSToBigQueryOperator(
@@ -349,7 +349,7 @@ with DAG(
                     bucket = BUCKET_NAME,
                     source_objects = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}',
                     source_format  = 'NEWLINE_DELIMITED_JSON',
-                    destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table.lower()}_{SOURCE_TYPE}_stg",
+                    destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg",
                     autodetect = True,
                     write_disposition = "WRITE_TRUNCATE",
                 )
