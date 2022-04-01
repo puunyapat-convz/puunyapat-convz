@@ -328,7 +328,7 @@ with DAG(
                     google_cloud_storage_conn_id = "convz_dev_service_account",
                     bigquery_conn_id = "convz_dev_service_account",
                     dataset_id = DATASET_ID,
-                    table_id = f"{tm1_table}_{SOURCE_TYPE}_source",
+                    table_id = f"{tm1_table.lower()}_{SOURCE_TYPE}_source",
                     project_id = PROJECT_ID,
                     gcs_schema_object = f'{{{{ ti.xcom_pull(task_ids="schema_to_gcs_{tm1_table}") }}}}',
                     time_partitioning = { "field":"report_date", "type":"DAY" },
@@ -349,7 +349,7 @@ with DAG(
                     bucket = BUCKET_NAME,
                     source_objects = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}',
                     source_format  = 'NEWLINE_DELIMITED_JSON',
-                    destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg",
+                    destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table.lower()}_{SOURCE_TYPE}_stg",
                     autodetect = True,
                     write_disposition = "WRITE_TRUNCATE",
                 )
@@ -358,7 +358,7 @@ with DAG(
                     task_id  = f"extract_to_final_{tm1_table}",
                     location = LOCATION,
                     sql      = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
-                    destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.{tm1_table}_{SOURCE_TYPE}_source${{{{ yesterday_ds_nodash }}}}",
+                    destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ yesterday_ds_nodash }}}}",
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                     write_disposition = "WRITE_TRUNCATE",
                     bigquery_conn_id  = 'convz_dev_service_account',
@@ -374,8 +374,7 @@ with DAG(
                 create_schema >> schema_to_gcs >> create_final_table >> extract_to_final          
 
     # DAG level dependencies
-    start_task >> create_ds_final >> load_folders_tasks_group
-    start_task >> create_ds_stg >> load_folders_tasks_group
+    start_task >> [ create_ds_final, create_ds_stg ] >> load_folders_tasks_group
     load_folders_tasks_group >> end_task
     # start_task >> create_ds_final >> create_ds_stg >> load_folders_tasks_group >> end_task
 
