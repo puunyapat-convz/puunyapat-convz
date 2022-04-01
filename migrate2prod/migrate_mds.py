@@ -167,7 +167,6 @@ def _create_var(table_name, data):
         value = new_data,
         serialize_json = True
     )
-    return [ f"drop_list_{tm1_table}", f"create_schema_{tm1_table}" ]
 
 def _remove_var(table_name):
     Variable.delete(key = f'{SOURCE_NAME}_{table_name}_report_date')
@@ -181,7 +180,7 @@ def _update_query(report_date, run_date, sql):
     return sql
 
 with DAG(
-    dag_id="migrate_erp",
+    dag_id="migrate_mds",
     schedule_interval=None,
     # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 3, 29),
@@ -203,12 +202,12 @@ with DAG(
 
     end_task   = DummyOperator(task_id = "end_task")
 
-    # iterable_tables_list = Variable.get(
-    #     key=f'{SOURCE_NAME}_tables',
-    #     default_var=['default_table'],
-    #     deserialize_json=True
-    # )
-    iterable_tables_list = [ "COL_STORE_MASTER" ]
+    iterable_tables_list = Variable.get(
+        key=f'{SOURCE_NAME}_tables',
+        default_var=['default_table'],
+        deserialize_json=True
+    )
+    # iterable_tables_list = [ "V_PRODUCT_SPECIAL" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
@@ -238,7 +237,7 @@ with DAG(
                     selected_fields='report_date'
                 )
 
-                create_var = BranchPythonOperator(
+                create_var = PythonOperator(
                     task_id=f'create_var_{tm1_table}',
                     python_callable = _create_var,
                     op_kwargs={ 
@@ -278,14 +277,14 @@ with DAG(
                     bigquery_conn_id = "convz_dev_service_account",
                     project_id = PROJECT_DST,
                     dataset_id = DATASET_DST,
-                    table_id = f"{tm1_table}_daily_source",
+                    table_id = f"{tm1_table.lower()}_daily_source",
                     gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/{tm1_table}.json',
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
                 remove_var = PythonOperator(
                     task_id = f"remove_var_{tm1_table}",
-                    # trigger_rule = 'all_success',
+                    trigger_rule = 'all_success',
                     python_callable = _remove_var,
                     op_kwargs = { 'table_name' : tm1_table }
                 )
@@ -319,7 +318,8 @@ with DAG(
                                 task_id  = f"extract_to_prod_{tm1_table}_{report_date}",
                                 location = LOCATION,
                                 sql      = f'{{{{ ti.xcom_pull(task_ids="update_query_{tm1_table}_{report_date}") }}}}',
-                                destination_dataset_table = f"{PROJECT_DST}.{DATASET_DST}.{tm1_table}_{SOURCE_TYPE}_source$" + report_date.replace("-",''),
+                                destination_dataset_table = f"{PROJECT_DST}.{DATASET_DST}.{tm1_table.lower()}_{SOURCE_TYPE}_source$" 
+                                                            + report_date.replace("-",''),
                                 time_partitioning = { "field":"report_date", "type":"DAY" },
                                 write_disposition = "WRITE_TRUNCATE",
                                 bigquery_conn_id  = 'convz_dev_service_account',
@@ -331,7 +331,6 @@ with DAG(
 
                 # Table level dependencies
                 list_report_dates >> get_list >> create_var >> [ drop_list, create_schema ]
-                drop_list >> end_task
                 create_schema >> schema_to_gcs >> create_prod_table >> migrate_date_group >> remove_var
 
     # DAG level dependencies
