@@ -222,7 +222,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "tbaccount_segment_master" ]
+    # iterable_tables_list = [ "tbreasonmaster" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
