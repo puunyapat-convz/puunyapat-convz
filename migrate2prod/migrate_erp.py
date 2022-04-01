@@ -4,7 +4,6 @@ from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 
-from airflow.contrib.operators.bigquery_get_data       import *
 from airflow.providers.google.cloud.operators.bigquery import *
 from airflow.providers.google.cloud.operators.gcs      import *
 
@@ -167,7 +166,6 @@ def _create_var(table_name, data):
         value = new_data,
         serialize_json = True
     )
-    return [ f"drop_list_{tm1_table}", f"create_schema_{tm1_table}" ]
 
 def _remove_var(table_name):
     Variable.delete(key = f'{SOURCE_NAME}_{table_name}_report_date')
@@ -179,6 +177,15 @@ def _update_query(report_date, run_date, sql):
     sql = ''.join(sql_lines)
 
     return sql
+
+def _check_table(table_name, source_list):
+    json_data  = json.loads(json.dumps(source_list))
+    table_list = list(map(lambda datum: datum['tableId'], json_data))
+
+    if f"daily_{table_name}" in table_list:
+        return f"list_report_dates_{table_name}"
+    else:
+        return f"skip_table_{table_name}"
 
 with DAG(
     dag_id="migrate_erp",
@@ -201,14 +208,21 @@ with DAG(
         exists_ok   = True
     )
 
+    get_source_tb = BigQueryGetDatasetTablesOperator(
+        task_id     = "get_source_tb",
+        project_id  = PROJECT_SRC,
+        dataset_id  = DATASET_SRC,
+        gcp_conn_id = "convz_dev_service_account",
+    )
+
     end_task   = DummyOperator(task_id = "end_task")
 
-    # iterable_tables_list = Variable.get(
-    #     key=f'{SOURCE_NAME}_tables',
-    #     default_var=['default_table'],
-    #     deserialize_json=True
-    # )
-    iterable_tables_list = [ "tbproductbommaster" ]
+    iterable_tables_list = Variable.get(
+        key=f'{SOURCE_NAME}_tables',
+        default_var=['default_table'],
+        deserialize_json=True
+    )
+    # iterable_tables_list = [ "tbaccount_segment_master" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
@@ -217,6 +231,18 @@ with DAG(
 
         if iterable_tables_list:
             for index, tm1_table in enumerate(iterable_tables_list):
+
+                check_source_tb = BranchPythonOperator(
+                    task_id = f'check_source_tb_{tm1_table}',
+                    trigger_rule = 'all_success',
+                    python_callable = _check_table,
+                    op_kwargs = {
+                        'table_name'  : tm1_table,
+                        'source_list' : '{{ ti.xcom_pull(task_ids="get_source_tb") }}'
+                    }
+                )
+
+                skip_table = DummyOperator(task_id = f"skip_table_{tm1_table}")
 
                 list_report_dates = BigQueryExecuteQueryOperator(
                     task_id  = f"list_report_dates_{tm1_table}",
@@ -238,7 +264,7 @@ with DAG(
                     selected_fields='report_date'
                 )
 
-                create_var = BranchPythonOperator(
+                create_var = PythonOperator(
                     task_id=f'create_var_{tm1_table}',
                     python_callable = _create_var,
                     op_kwargs={ 
@@ -278,14 +304,14 @@ with DAG(
                     bigquery_conn_id = "convz_dev_service_account",
                     project_id = PROJECT_DST,
                     dataset_id = DATASET_DST,
-                    table_id = f"{tm1_table}_daily_source",
+                    table_id = f"{tm1_table.lower()}_daily_source",
                     gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/{tm1_table}.json',
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
                 remove_var = PythonOperator(
                     task_id = f"remove_var_{tm1_table}",
-                    # trigger_rule = 'all_success',
+                    trigger_rule = 'all_success',
                     python_callable = _remove_var,
                     op_kwargs = { 'table_name' : tm1_table }
                 )
@@ -319,7 +345,8 @@ with DAG(
                                 task_id  = f"extract_to_prod_{tm1_table}_{report_date}",
                                 location = LOCATION,
                                 sql      = f'{{{{ ti.xcom_pull(task_ids="update_query_{tm1_table}_{report_date}") }}}}',
-                                destination_dataset_table = f"{PROJECT_DST}.{DATASET_DST}.{tm1_table}_{SOURCE_TYPE}_source$" + report_date.replace("-",''),
+                                destination_dataset_table = f"{PROJECT_DST}.{DATASET_DST}.{tm1_table.lower()}_{SOURCE_TYPE}_source$" 
+                                                            + report_date.replace("-",''),
                                 time_partitioning = { "field":"report_date", "type":"DAY" },
                                 write_disposition = "WRITE_TRUNCATE",
                                 bigquery_conn_id  = 'convz_dev_service_account',
@@ -330,9 +357,10 @@ with DAG(
                             update_query >> extract_to_prod 
 
                 # Table level dependencies
+                check_source_tb >> [ skip_table, list_report_dates ]
                 list_report_dates >> get_list >> create_var >> [ drop_list, create_schema ]
-                drop_list >> end_task
                 create_schema >> schema_to_gcs >> create_prod_table >> migrate_date_group >> remove_var
+                
 
     # DAG level dependencies
-    start_task >> create_dataset >> migrate_tasks_group >> end_task
+    start_task >> [create_dataset, get_source_tb] >> migrate_tasks_group >> end_task
