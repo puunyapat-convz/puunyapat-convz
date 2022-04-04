@@ -15,6 +15,7 @@ import pandas   as pd
 import tempfile
 import logging
 import json
+import re
 
 ######### VARIABLES ###########
 
@@ -178,11 +179,14 @@ def _update_query(report_date, run_date, sql):
 
     return sql
 
-def _check_table(table_name, source_list):
+def _prepare_list(source_list):
     json_data  = json.loads(json.dumps(source_list))
     table_list = list(map(lambda datum: datum['tableId'], json_data))
+    final_list = [ name for name in table_list if re.match(f"^{SOURCE_TYPE}_",name) ]
+    return final_list
 
-    if f"daily_{table_name}" in table_list:
+def _check_table(table_name, source_list):
+    if f"daily_{table_name}" in source_list:
         return f"list_report_dates_{table_name}"
     else:
         return f"skip_table_{table_name}"
@@ -215,6 +219,14 @@ with DAG(
         gcp_conn_id = "convz_dev_service_account",
     )
 
+    prepare_list = PythonOperator(
+        task_id   = "prepare_list",
+        python_callable = _prepare_list,
+        op_kwargs = { 
+            'source_list' : '{{ ti.xcom_pull(task_ids="get_source_tb") }}'
+        },
+    )
+
     end_task   = DummyOperator(task_id = "end_task")
 
     iterable_tables_list = Variable.get(
@@ -238,7 +250,7 @@ with DAG(
                     python_callable = _check_table,
                     op_kwargs = {
                         'table_name'  : tm1_table,
-                        'source_list' : '{{ ti.xcom_pull(task_ids="get_source_tb") }}'
+                        'source_list' : '{{ ti.xcom_pull(task_ids="prepare_list") }}'
                     }
                 )
 
@@ -361,6 +373,5 @@ with DAG(
                 list_report_dates >> get_list >> create_var >> [ drop_list, create_schema ]
                 create_schema >> schema_to_gcs >> create_prod_table >> migrate_date_group >> remove_var
                 
-
     # DAG level dependencies
-    start_task >> [create_dataset, get_source_tb] >> migrate_tasks_group >> end_task
+    start_task >> [create_dataset, get_source_tb] >> prepare_list >> migrate_tasks_group >> end_task
