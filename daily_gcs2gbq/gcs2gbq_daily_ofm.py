@@ -53,7 +53,7 @@ SOURCE_NAME  = "officemate"
 SOURCE_TYPE  = "daily"
 
 ## airbyte header which contains data
-PAYLOAD_NAME = "_airbyte_data"
+FIELD_PREFIX = "_airbyte_data."
 
 ###############################
 
@@ -142,16 +142,16 @@ def _generate_schema(table_name, report_date, run_date):
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
         schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
-        query = f"{query}\tCAST ({PAYLOAD_NAME}.{rows.COLUMN_NAME} AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
+        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
     schema.append({"name":"run_date", "type":"DATE", "mode":"REQUIRED"})
 
-    query = f"{query}\tDATE('{report_date}') AS report_date,\n"
-    query = f"{query}\tDATE('{run_date}') AS run_date\n"
+    query = f"{query}\tDATE('{report_date}') AS `report_date`,\n"
+    query = f"{query}\tDATE('{run_date}') AS `run_date`\n"
 
-    query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}.{SOURCE_TYPE}_{table_name}_stg`\n"
+    query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}_stg.{table_name}_{SOURCE_TYPE}_stg`\n"
     # query = f"{query}WHERE DATE(_PARTITIONTIME) = '{report_date}'"
     # query = f"{query}LIMIT 10"
 
@@ -213,16 +213,17 @@ with DAG(
     dag_id="gcs2gbq_daily_ofm",
     schedule_interval=None,
     # schedule_interval="00 01 * * *",
-    start_date=dt.datetime(2022, 3, 29),
+    start_date=dt.datetime(2022, 4, 3),
     catchup=False,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
+    end_task   = DummyOperator(task_id = "end_task", trigger_rule = 'all_done')
 
-    create_dataset = BigQueryCreateEmptyDatasetOperator(
-        task_id     = "create_dataset",
+    create_ds_final = BigQueryCreateEmptyDatasetOperator(
+        task_id     = "create_ds_final",
         dataset_id  = DATASET_ID,
         project_id  = PROJECT_ID,
         location    = LOCATION,
@@ -230,14 +231,21 @@ with DAG(
         exists_ok   = True
     )
 
-    end_task   = DummyOperator(task_id = "end_task")
+    create_ds_stg = BigQueryCreateEmptyDatasetOperator(
+        task_id     = "create_ds_stg",
+        dataset_id  = f"{DATASET_ID}_stg",
+        project_id  = PROJECT_ID,
+        location    = LOCATION,
+        gcp_conn_id = "convz_dev_service_account",
+        exists_ok   = True
+    )
 
     iterable_tables_list = Variable.get(
         key=f'{SOURCE_NAME}_tables',
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "COL_STORE_MASTER" ]
+    # iterable_tables_list = [ "tbpromotion_campaign" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
@@ -250,6 +258,7 @@ with DAG(
                 create_tm1_list = BashOperator(
                     task_id  = f"create_tm1_list_{tm1_table}",
                     cwd      = MAIN_PATH,
+                    trigger_rule = 'all_success',
                     bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});"
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
@@ -319,10 +328,10 @@ with DAG(
                     google_cloud_storage_conn_id = "convz_dev_service_account",
                     bigquery_conn_id = "convz_dev_service_account",
                     dataset_id = DATASET_ID,
-                    table_id = f"daily_{tm1_table}",
+                    table_id = f"{tm1_table.lower()}_{SOURCE_TYPE}_source",
                     project_id = PROJECT_ID,
                     gcs_schema_object = f'{{{{ ti.xcom_pull(task_ids="schema_to_gcs_{tm1_table}") }}}}',
-                    time_partitioning = { "report_date": "DAY" },
+                    time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
                 drop_temp_tables = BigQueryDeleteTableOperator(
@@ -330,7 +339,7 @@ with DAG(
                     location = LOCATION,
                     gcp_conn_id = 'convz_dev_service_account',
                     ignore_if_missing = True,
-                    deletion_dataset_table = f'{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}_stg'
+                    deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
                 load_tm1_files = GCSToBigQueryOperator(
@@ -340,9 +349,8 @@ with DAG(
                     bucket = BUCKET_NAME,
                     source_objects = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}',
                     source_format  = 'NEWLINE_DELIMITED_JSON',
-                    destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}_stg",
+                    destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg",
                     autodetect = True,
-                    time_partitioning = { "run_date": "DAY" },
                     write_disposition = "WRITE_TRUNCATE",
                 )
 
@@ -350,8 +358,8 @@ with DAG(
                     task_id  = f"extract_to_final_{tm1_table}",
                     location = LOCATION,
                     sql      = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
-                    destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.daily_{tm1_table}${{{{ yesterday_ds_nodash }}}}",
-                    time_partitioning = { "report_date": "DAY" },
+                    destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ yesterday_ds_nodash }}}}",
+                    time_partitioning = { "field":"report_date", "type":"DAY" },
                     write_disposition = "WRITE_TRUNCATE",
                     bigquery_conn_id  = 'convz_dev_service_account',
                     use_legacy_sql    = False,
@@ -363,11 +371,12 @@ with DAG(
                 read_tm1_list >> check_variable >> [ skip_load, create_schema, drop_temp_tables ]
 
                 drop_temp_tables >> load_tm1_files >> extract_to_final
-                create_schema >> schema_to_gcs >> create_final_table >> extract_to_final
-                extract_to_final >> end_task                
+                create_schema >> schema_to_gcs >> create_final_table >> extract_to_final          
 
     # DAG level dependencies
-    start_task >> create_dataset >> load_folders_tasks_group >> end_task
+    start_task >> [ create_ds_final, create_ds_stg ] >> load_folders_tasks_group
+    load_folders_tasks_group >> end_task
+    # start_task >> create_ds_final >> create_ds_stg >> load_folders_tasks_group >> end_task
 
 ## TO DO
 ## 1. Change BigQueryExecuteQueryOperator to BigQueryInsertJobOperator
