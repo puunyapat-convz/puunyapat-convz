@@ -376,7 +376,6 @@ with DAG(
     # DAG level dependencies
     start_task >> [ create_ds_final, create_ds_stg ] >> load_folders_tasks_group
     load_folders_tasks_group >> end_task
-    # start_task >> create_ds_final >> create_ds_stg >> load_folders_tasks_group >> end_task
 
 ## TO DO
 ## 1. Change BigQueryExecuteQueryOperator to BigQueryInsertJobOperator

@@ -44,8 +44,8 @@ SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-ver
 SCHEMA_SHEET   = "Field-Officemate"
 SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
-PROJECT_ID   = "central-cto-ofm-data-hub-dev"
-DATASET_ID   = "airflow_test_ofm"
+PROJECT_ID   = "central-cto-ofm-data-hub-prod"
+DATASET_ID   = "officemate_ofm_daily"
 LOCATION     = "asia-southeast1" 
 
 BUCKET_NAME  = "ofm-data"
@@ -211,10 +211,11 @@ def _check_xcom(table_name, tm1_varible):
 
 with DAG(
     dag_id="gcs2gbq_daily_ofm",
-    schedule_interval=None,
-    # schedule_interval="00 01 * * *",
-    start_date=dt.datetime(2022, 4, 3),
-    catchup=False,
+    # schedule_interval=None,
+    schedule_interval="00 01 * * *",
+    start_date=dt.datetime(2022, 4, 1),
+    catchup=True,
+    max_active_runs=1,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
 ) as dag:
@@ -376,7 +377,6 @@ with DAG(
     # DAG level dependencies
     start_task >> [ create_ds_final, create_ds_stg ] >> load_folders_tasks_group
     load_folders_tasks_group >> end_task
-    # start_task >> create_ds_final >> create_ds_stg >> load_folders_tasks_group >> end_task
 
 ## TO DO
 ## 1. Change BigQueryExecuteQueryOperator to BigQueryInsertJobOperator
