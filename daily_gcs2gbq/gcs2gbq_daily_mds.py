@@ -245,7 +245,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "tbpackingmaster" ]
+    # iterable_tables_list = [ "COL_STORE_MASTER" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
