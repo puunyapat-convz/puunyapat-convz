@@ -213,8 +213,9 @@ with DAG(
     dag_id="gcs2gbq_daily_erp",
     # schedule_interval=None,
     schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 30),
-    catchup=False,
+    start_date=dt.datetime(2022, 4, 1),
+    catchup=True,
+    max_active_runs=1,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
 ) as dag:
