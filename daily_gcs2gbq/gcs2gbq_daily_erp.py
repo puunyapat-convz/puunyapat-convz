@@ -141,8 +141,13 @@ def _generate_schema(table_name, report_date, run_date):
         if gbq_data_type == "":
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
+        if gbq_field_mode == "NULLABLE" and gbq_data_type.upper() in [ "DATE", "TIME", "DATETIME", "TIMESTAMP" ]:
+            method = "SAFE_CAST"
+        else:
+            method = "CAST"
+
+        query = f"{query}\t{method} ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
         schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
-        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
@@ -213,7 +218,7 @@ with DAG(
     dag_id="gcs2gbq_daily_erp",
     # schedule_interval=None,
     schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 4, 1),
+    start_date=dt.datetime(2022, 3, 27),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
