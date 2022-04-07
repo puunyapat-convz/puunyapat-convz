@@ -154,7 +154,7 @@ def _generate_schema(table_name, report_date, run_date):
     schema.append({"name":"run_date", "type":"DATE", "mode":"REQUIRED"})
 
     query = f"{query}\tDATE('{report_date}') AS `report_date`,\n"
-    query = f"{query}\tDATE('{run_date}') AS `run_date`\n"
+    query = f"{query}\tDATE('" + f"{run_date.strftime('%Y-%m-%d')}') AS `run_date`\n"
 
     query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}_stg.{table_name}_{SOURCE_TYPE}_stg`\n"
     # query = f"{query}WHERE DATE(_PARTITIONTIME) = '{report_date}'"
@@ -251,7 +251,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "tbpromotion_campaign" ]
+    # iterable_tables_list = [ "tbpromotion_coupon_code" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
@@ -265,7 +265,7 @@ with DAG(
                     task_id  = f"create_tm1_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});"
+                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});"
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
@@ -316,8 +316,8 @@ with DAG(
                     python_callable=_generate_schema,
                     op_kwargs={ 
                         'table_name' : tm1_table,
-                        'report_date': '{{ yesterday_ds }}',
-                        'run_date'   : '{{ ds }}'
+                        'report_date': '{{ ds }}',
+                        'run_date'   : '{{ data_interval_end }}'
                     },
                 )
 
@@ -364,7 +364,7 @@ with DAG(
                     task_id  = f"extract_to_final_{tm1_table}",
                     location = LOCATION,
                     sql      = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
-                    destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ yesterday_ds_nodash }}}}",
+                    destination_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ds_nodash }}}}",
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                     write_disposition = "WRITE_TRUNCATE",
                     bigquery_conn_id  = 'convz_dev_service_account',
