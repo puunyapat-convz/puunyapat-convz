@@ -1,23 +1,76 @@
 from airflow                   import configuration, DAG
+from airflow.models            import Variable
 from airflow.operators.python  import PythonOperator
 from airflow.operators.bash    import BashOperator
 from airflow.providers.google.cloud.hooks.bigquery import *
 from airflow.providers.google.cloud.transfers.gcs_to_local import *
 from airflow.providers.google.cloud.operators.bigquery import *
+from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
+
 import datetime as dt
+import tempfile
 import json
 
 PROJECT_ID   = "central-cto-ofm-data-hub-prod"
 DATASET_ID   = "erp_ofm_daily_stg"
 LOCATION     = "asia-southeast1" 
+
 BUCKET_NAME  = "ofm-data"
+SOURCE_NAME  = "ERP"
+SOURCE_TYPE  = "daily"
 
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 
+class ContentToGoogleCloudStorageOperator(BaseOperator):
+
+    template_fields = ('content', 'dst', 'bucket')
+
+    def __init__(self,
+                 content,
+                 dst,
+                 bucket,
+                 gcp_conn_id='google_cloud_default',
+                 mime_type='application/octet-stream',
+                 delegate_to=None,
+                 gzip=False,
+                 *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.content = content
+        self.dst = dst
+        self.bucket = bucket
+        self.gcp_conn_id = gcp_conn_id
+        self.mime_type = mime_type
+        self.delegate_to = delegate_to
+        self.gzip = gzip
+
+    def execute(self, context):
+
+        hook = GCSHook(
+            google_cloud_storage_conn_id=self.gcp_conn_id,
+            delegate_to=self.delegate_to
+        )
+
+        json_data = json.dumps(self.content, indent=4)
+
+        with tempfile.NamedTemporaryFile(prefix="gcs-local") as file:
+            file.write(json_data.encode('utf-8'))
+            file.flush()
+            hook.upload(
+                bucket_name=self.bucket,
+                object_name=self.dst,
+                mime_type=self.mime_type,
+                filename=file.name,
+                gzip=self.gzip,
+        )
+        return f'gs://{self.bucket}/{self.dst}'
+
 def _update_schema(schema_data):
     # schema_data = '{ "fields": [ { "name": "_airbyte_data", "type": "RECORD", "mode": "NULLABLE", "fields": [ { "name": "_airbyte_emitted_at", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "bq-datetime" }, { "name": "shippingreasoncode", "type": "STRING", "mode": "NULLABLE" }, { "name": "customernameshort", "type": "STRING", "mode": "NULLABLE" }, { "name": "customeraddress2", "type": "STRING", "mode": "NULLABLE" }, { "name": "customeraddress1", "type": "STRING", "mode": "NULLABLE" }, { "name": "shippinglabelno", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "shippingboxtype", "type": "STRING", "mode": "NULLABLE" }, { "name": "shippinggroup", "type": "STRING", "mode": "NULLABLE" }, { "name": "shippingboxno", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "textfilename", "type": "STRING", "mode": "NULLABLE" }, { "name": "customername", "type": "STRING", "mode": "NULLABLE" }, { "name": "canceledqty", "type": "FLOAT", "mode": "NULLABLE" }, { "name": "personname", "type": "STRING", "mode": "NULLABLE" }, { "name": "shippingplandate", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "phonenumber", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "expirydate", "type": "STRING", "mode": "NULLABLE" }, { "name": "pickedqty", "type": "FLOAT", "mode": "NULLABLE" }, { "name": "faxnumber", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "inventoryassignmentstartno", "type": "STRING", "mode": "NULLABLE" }, { "name": "status", "type": "STRING", "mode": "NULLABLE" }, { "name": "updateby", "type": "STRING", "mode": "NULLABLE" }, { "name": "updateon", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "bq-datetime" }, { "name": "pickedtime", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "qcstatus", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "sectionname", "type": "STRING", "mode": "NULLABLE" }, { "name": "msgerror", "type": "STRING", "mode": "NULLABLE" }, { "name": "itemcode", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "createon", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "bq-datetime" }, { "name": "ID", "type": "FLOAT", "mode": "NULLABLE" }, { "name": "customercode", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "createby", "type": "STRING", "mode": "NULLABLE" }, { "name": "zipcode", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "customeraddress3", "type": "STRING", "mode": "NULLABLE" }, { "name": "specifiedlot", "type": "STRING", "mode": "NULLABLE" }, { "name": "detailno", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "saleorderno", "type": "STRING", "mode": "NULLABLE" }, { "name": "ownercode", "type": "STRING", "mode": "NULLABLE" }, { "name": "lot", "type": "STRING", "mode": "NULLABLE" }, { "name": "systemid", "type": "STRING", "mode": "NULLABLE" }, { "name": "_airbyte_tbshippinglabelinformation_hashid", "type": "STRING", "mode": "NULLABLE" }, { "name": "remarks", "type": "STRING", "mode": "NULLABLE" }, { "name": "memo1", "type": "STRING", "mode": "NULLABLE" }, { "name": "pickeddate", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "bq-datetime" }, { "name": "memo2", "type": "STRING", "mode": "NULLABLE" }, { "name": "itemname", "type": "STRING", "mode": "NULLABLE" }, { "name": "subcode", "type": "INTEGER", "mode": "NULLABLE" } ] }, { "name": "_airbyte_emitted_at", "type": "INTEGER", "mode": "NULLABLE" }, { "name": "_airbyte_ab_id", "type": "STRING", "mode": "NULLABLE" } ] }'
-    json_schema = json.loads(schema_data)
+    # json_schema = json.loads(schema_data)
+    json_schema = schema_data
 
     for index in range(len(json_schema)):
         if json_schema['fields'][index]['name'] == "_airbyte_data":
@@ -38,7 +91,7 @@ def _update_schema(schema_data):
                 stg_schema[stg_fields.index(field_name)]['type'] = 'STRING'
 
     json_schema['fields'][index]['fields'] = stg_schema
-    return json.dumps(json_schema['fields'])
+    return json.dumps(json_schema['fields'], indent=4)
 
 def _get_schema(table_name):
     hook = BigQueryHook(bigquery_conn_id="convz_dev_service_account")
@@ -54,7 +107,8 @@ with DAG(
     # schedule_interval="05 00 * * *",
     schedule_interval=None,
     start_date=dt.datetime(2022, 4, 5),
-    catchup=False
+    catchup=False,
+    render_template_as_native_obj=True,
 ) as dag:
 
     # load2local = GCSToLocalFilesystemOperator(
@@ -75,22 +129,30 @@ with DAG(
     #                     + ' 2022_04_07_1649370599999_0_sample.jsonl'
     # )
 
-    get_schema = PythonOperator(
-        task_id="get_schema",
-        provide_context=True,
-        python_callable=_get_schema,
-        op_kwargs = {
-            'table_name' : "tbshippinglabelinformation_daily_stg"
-        }
-    )
+    # get_schema = PythonOperator(
+    #     task_id="get_schema",
+    #     provide_context=True,
+    #     python_callable=_get_schema,
+    #     op_kwargs = {
+    #         'table_name' : "tbshippinglabelinformation_daily_stg"
+    #     }
+    # )
 
-    update_schema = PythonOperator(
-        task_id="update_schema",
-        provide_context=True,
-        python_callable=_update_schema,
-        op_kwargs = {
-            'schema_data' : '{{ ti.xcom_pull(task_ids="get_schema") }}'
-        }
+    # update_schema = PythonOperator(
+    #     task_id="update_schema",
+    #     provide_context=True,
+    #     python_callable=_update_schema,
+    #     op_kwargs = {
+    #         'schema_data' : '{{ ti.xcom_pull(task_ids="get_schema") }}'
+    #     }
+    # )
+
+    schema_to_gcs = ContentToGoogleCloudStorageOperator(
+        task_id = f'schema_to_gcs',
+        content = '{{ ti.xcom_pull(task_ids="update_schema") }}',
+        dst     = f'{SOURCE_NAME}/schemas/tbshippinglabelinformation_stg.json',
+        bucket  = BUCKET_NAME,
+        gcp_conn_id = "convz_dev_service_account"
     )
 
     drop_stg_tables = BigQueryDeleteTableOperator(
@@ -98,18 +160,31 @@ with DAG(
         location = LOCATION,
         gcp_conn_id = 'convz_dev_service_account',
         ignore_if_missing = True,
-        deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.tbshippinglabelinformation_daily_stg"
+        deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.tbshippinglabelinformation_daily_stg"
     )
 
-    create_stg_table = BigQueryCreateEmptyTableOperator(
-        task_id = f"create_stg_table",
+    recreate_stg = BigQueryCreateEmptyTableOperator(
+        task_id = f"recreate_stg",
         google_cloud_storage_conn_id = "convz_dev_service_account",
         bigquery_conn_id = "convz_dev_service_account",
         project_id = PROJECT_ID,
         dataset_id = DATASET_ID,
         table_id = "tbshippinglabelinformation_daily_stg",
-        gcs_schema_object = '{{ ti.xcom_pull(task_ids="update_schema}") }}',
+        gcs_schema_object = '{{ ti.xcom_pull(task_ids="schema_to_gcs") }}'
     )
 
-    get_schema >> update_schema >> drop_stg_tables >> create_stg_table
+    ## change to BigQueryInsertJobOperator
+    reload2stg = GCSToBigQueryOperator(
+        task_id = f"reload2stg",
+        google_cloud_storage_conn_id = "convz_dev_service_account",
+        bigquery_conn_id = "convz_dev_service_account",
+        bucket = BUCKET_NAME,
+        source_objects = ['ERP/daily/tbshippinglabelinformation/2022_04_07_1649370599999_0.jsonl'],
+        source_format  = 'NEWLINE_DELIMITED_JSON',
+        destination_project_dataset_table = f"{PROJECT_ID}.{DATASET_ID}.tbshippinglabelinformation_daily_stg",
+        schema_object = '{{ ti.xcom_pull(task_ids="schema_to_gcs") }}'
+    )
+
+    schema_to_gcs >> drop_stg_tables >> recreate_stg >> reload2stg
+    # get_schema >> update_schema >> schema_to_gcs >> drop_stg_tables >> recreate_stg
     # load2local #>> get_schema >> update_schema
