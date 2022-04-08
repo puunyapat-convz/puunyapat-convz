@@ -44,8 +44,9 @@ SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-ver
 SCHEMA_SHEET   = "Field-ERP"
 SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
-PROJECT_ID   = "central-cto-ofm-data-hub-prod"
-DATASET_ID   = "erp_ofm_daily"
+PROJECT_ID   = "central-cto-ofm-data-hub-dev"
+# DATASET_ID   = "erp_ofm_daily"
+DATASET_ID   = "airflow_test_erp"
 LOCATION     = "asia-southeast1" 
 
 BUCKET_NAME  = "ofm-data"
@@ -218,7 +219,7 @@ with DAG(
     dag_id="gcs2gbq_daily_erp",
     # schedule_interval=None,
     schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 27),
+    start_date=dt.datetime(2022, 4, 7),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
@@ -246,12 +247,12 @@ with DAG(
         exists_ok   = True
     )
 
-    iterable_tables_list = Variable.get(
-        key=f'{SOURCE_NAME}_tables',
-        default_var=['default_table'],
-        deserialize_json=True
-    )
-    # iterable_tables_list = [ "tbpackingmaster" ]
+    # iterable_tables_list = Variable.get(
+    #     key=f'{SOURCE_NAME}_tables',
+    #     default_var=['default_table'],
+    #     deserialize_json=True
+    # )
+    iterable_tables_list = [ "tbshippinglabelinformation" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
