@@ -218,7 +218,7 @@ def _check_xcom(table_name, tm1_varible):
         log.info(f"Table [ {table_name} ] has no T-1 file to load.")        
         return f"skip_load_{table_name}"
     else:
-        return [ f"drop_temp_{table_name}", f"create_schema_{table_name}" ]
+        return [ f"drop_temp_{table_name}", f"create_schema_{table_name}", f"get_sample_{table_name}" ]
 
 def _get_schema(table_name):
     hook = BigQueryHook(bigquery_conn_id="convz_dev_service_account")
@@ -296,7 +296,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "W_EXCEL_COL_SKU", "OFM_FR_STORE_FEE", "V_WEXCEL_MARKDOWNRANGE_DS" ]
+    # iterable_tables_list = [ "W_EXCEL_COL_SKU" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
@@ -342,7 +342,7 @@ with DAG(
                     bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_tm1_list_{tm1_table}') }}}}"
                 )
 
-                check_variable = BranchPythonOperator(
+                check_xcom = BranchPythonOperator(
                     task_id=f'check_xcom_{tm1_table}',
                     python_callable=_check_xcom,
                     op_kwargs = {
@@ -406,6 +406,7 @@ with DAG(
                 load_sample = BashOperator(
                     task_id  = f"load_sample_{tm1_table}",
                     cwd      = MAIN_PATH,
+                    trigger_rule = 'all_success',
                     bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON" \
                                     + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg" \
                                     + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}' \
@@ -441,7 +442,8 @@ with DAG(
 
                 load_stg = BigQueryInsertJobOperator( 
                     task_id = f"load_stg_{tm1_table}",
-                    gcp_conn_id="convz_dev_service_account",
+                    gcp_conn_id = "convz_dev_service_account",
+                    trigger_rule = 'all_success',
                     configuration = {
                         "load": {
                             "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}',
@@ -462,7 +464,8 @@ with DAG(
 
                 load_final = BigQueryInsertJobOperator( 
                     task_id = f"load_final_{tm1_table}",
-                    gcp_conn_id="convz_dev_service_account",
+                    gcp_conn_id = "convz_dev_service_account",
+                    trigger_rule = 'all_success',
                     configuration = {
                         "query": {
                             "query": f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
@@ -484,9 +487,9 @@ with DAG(
 
                 # TaskGroup load_files_tasks_group level dependencies
                 create_tm1_list >> check_tm1_list >> [ skip_table, read_tm1_list ] >> remove_file_list
-                read_tm1_list >> check_variable >> [ skip_load, create_schema, drop_temp ]
+                read_tm1_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
 
-                drop_temp >> get_sample >> load_sample >> get_schema >> update_schema >> drop_sample >> load_stg >> load_final
+                [ drop_temp, get_sample ] >> load_sample >> get_schema >> [ update_schema, drop_sample ] >> load_stg >> load_final
                 create_schema >> schema_to_gcs >> create_final_table >> load_final
 
     # DAG level dependencies
