@@ -142,17 +142,16 @@ def _generate_schema(table_name, report_date, run_date):
         if gbq_data_type == "":
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
        
-        if gbq_field_mode == "NULLABLE" and gbq_data_type.upper() in [ "DATE", "TIME", "DATETIME", "TIMESTAMP" ]:
-            method = "SAFE_CAST"
+        if gbq_data_type.upper() in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
+            if gbq_field_mode == "NULLABLE":
+                method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` IS NULL," \
+                            + f" CAST(PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()}), NULL)"
+            else:
+                method = f"CAST (PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()})"
         else:
-            method = "CAST"
+            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()})"
 
-        if gbq_data_type.upper() in ["DATETIME", "TIMESTAMP"]:
-            dt_format = """ FORMAT 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"'"""
-        else:
-            dt_format = ""
-
-        query = f"{query}\t{method} ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}{dt_format}) AS `{rows.COLUMN_NAME}`,\n"
+        query = f"{query}\t{method} AS `{rows.COLUMN_NAME}`,\n"
         schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
 
     # Add time partitioned field
@@ -245,7 +244,7 @@ def _update_schema(stg_schema, fin_schema):
             stg_fields.append(field_name)
             stg_schema.append(fin_schema[fin_fields.index(field_name)])
 
-        if fin_schema[fin_fields.index(field_name)]["type"] in [ "INT64", "FLOAT64"]:
+        if fin_schema[fin_fields.index(field_name)]["type"] in ["INT64", "FLOAT64"]:
             stg_schema[stg_fields.index(field_name)]["type"] = "FLOAT64"
         else:
             stg_schema[stg_fields.index(field_name)]["type"] = "STRING"
@@ -405,12 +404,12 @@ with DAG(
 
                 load_sample = BashOperator(
                     task_id  = f"load_sample_{tm1_table}",
-                    cwd      = MAIN_PATH,
+                    cwd      = f"{MAIN_PATH}/{SOURCE_NAME}",
                     trigger_rule = 'all_success',
                     bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON" \
                                     + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg" \
                                     + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}' \
-                                    + f' && rm -rf {SOURCE_NAME}/{tm1_table}'
+                                    + f' && rm -rf {tm1_table}'
                 )
 
                 get_schema = PythonOperator(
