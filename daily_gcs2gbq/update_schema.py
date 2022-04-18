@@ -8,7 +8,6 @@ from airflow.providers.google.cloud.operators.bigquery import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
-import tempfile
 import json
 
 PROJECT_ID   = "central-cto-ofm-data-hub-prod"
@@ -61,6 +60,12 @@ def _get_schema(table_name):
     )
     return json.dumps(result)
 
+def _get_object():
+    return [ 'gs://ofm-data/officemate/daily/arvattrn/2022_04_17_1650233657750_0.jsonl', 'gs://ofm-data/officemate/daily/arvattrn/2022_04_17_1650233657751_0.jsonl' ]
+
+def _get_list(gcs_path):
+    return gcs_path
+
 with DAG(
     dag_id="a_update_stg_schema",
     # schedule_interval="05 00 * * *",
@@ -70,11 +75,37 @@ with DAG(
     render_template_as_native_obj=True,
 ) as dag:
 
+    # set_name = BashOperator(
+    #     task_id  = "set_name",
+    #     cwd      = MAIN_PATH,
+    #     bash_command = "echo gs://ofm-data/officemate/daily/arvattrn/2022_04_17_1650233657750_0.jsonl"
+    # )
+
+    # get_object= PythonOperator(
+    #     task_id="get_object",
+    #     provide_context=True,
+    #     python_callable=_get_object,
+    #     # op_kwargs = {
+    #     #     "gcs_path" : f'{{{{ ti.xcom_pull(task_ids="set_name").replace("gs://{BUCKET_NAME}/","") }}}}'
+    #     # }
+    # )
+
+    # set_list = PythonOperator(
+    #     task_id="set_list",
+    #     provide_context=True,
+    #     python_callable=_get_list,
+    #     op_kwargs = {
+    #         "gcs_path" : f'{{{{ list(map(lambda i: i.replace("gs://{BUCKET_NAME}/",""), ti.xcom_pull(task_ids="get_object") )) }}}}'
+    #     }
+    # )
+
     # load2local = GCSToLocalFilesystemOperator(
     #     task_id="load2local",
     #     bucket=BUCKET_NAME,
-    #     object_name="ERP/daily/tbshippinglabelinformation/2022_04_07_1649370599999_0.jsonl", 
-    #     filename=MAIN_PATH + "/tbshippinglabelinformation/2022_04_07_1649370599999_0.jsonl", 
+    #     object_name=f'{{{{ ti.xcom_pull(task_ids="set_name").replace("gs://{BUCKET_NAME}/","") }}}}', 
+    #     filename=MAIN_PATH + "/2022_04_17_1650233657750_0.jsonl",
+    #     # object_name="ERP/daily/tbshippinglabelinformation/2022_04_07_1649370599999_0.jsonl", 
+    #     # filename=MAIN_PATH + "/tbshippinglabelinformation/2022_04_07_1649370599999_0.jsonl", 
     #     gcp_conn_id="convz_dev_service_account",
     # )
 
