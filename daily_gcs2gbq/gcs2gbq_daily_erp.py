@@ -400,7 +400,7 @@ with DAG(
                                     + f" && head -1 $data_file.jsonl > $data_file-sample.jsonl" \
                                     + f" && rm -f $data_file.jsonl" \
                                     + f" && echo $PWD/$data_file-sample.jsonl"
-                )              
+                )
 
                 load_sample = BashOperator(
                     task_id  = f"load_sample_{tm1_table}",
