@@ -11,10 +11,12 @@ from airflow.providers.google.cloud.operators.bigquery import *
 from airflow.providers.google.cloud.operators.gcs      import *
 
 from airflow.providers.google.cloud.transfers.local_to_gcs    import *
+from airflow.providers.google.cloud.transfers.gcs_to_local    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import pandas   as pd
+import pathlib
 import tempfile
 import logging
 import json
@@ -214,9 +216,11 @@ def _read_file(filename):
 
 def _check_xcom(table_name, tm1_varible):
     if len(tm1_varible) == 0:
-        log.info(f"Table [ {table_name} ] has no T-1 file to load.")        
+        log.info(f"Table [ {table_name} ] has no T-1 file to load.")
         return f"skip_load_{table_name}"
     else:
+        path = pathlib.Path(f'{MAIN_PATH}/{SOURCE_NAME}/{table_name}')
+        path.mkdir(parents=True, exist_ok=True)
         return [ f"drop_temp_{table_name}", f"create_schema_{table_name}", f"get_sample_{table_name}" ]
 
 def _get_schema(table_name):
@@ -306,10 +310,12 @@ with DAG(
             for index, tm1_table in enumerate(iterable_tables_list):
 
                 create_tm1_list = BashOperator(
-                    task_id  = f"create_tm1_list_{tm1_table}",
-                    cwd      = MAIN_PATH,
+                    task_id = f"create_tm1_list_{tm1_table}",
+                    cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});"
+                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});" \
+                                    # for manual run
+                                    # f"yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});" \
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
@@ -391,25 +397,25 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                get_sample = BashOperator(
+                get_sample = GCSToLocalFilesystemOperator(
                     task_id  = f"get_sample_{tm1_table}",
-                    cwd      = MAIN_PATH,
-                    bash_command = f'mkdir -p {SOURCE_NAME}/{tm1_table} && cd {SOURCE_NAME}/{tm1_table}' \
-                                    + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)' \
-                                    + f' && gsutil cp "{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}}" .' \
-                                    + f" && head -1 $data_file.jsonl > $data_file-sample.jsonl" \
-                                    + f" && rm -f $data_file.jsonl" \
-                                    + f" && echo $PWD/$data_file-sample.jsonl"
+                    bucket = BUCKET_NAME,
+                    object_name = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
+                    filename = f'{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].split("/")[-1] }}}}',
+                    gcp_conn_id="convz_dev_service_account",
                 )
 
                 load_sample = BashOperator(
                     task_id  = f"load_sample_{tm1_table}",
                     cwd      = f"{MAIN_PATH}/{SOURCE_NAME}",
                     trigger_rule = 'all_success',
-                    bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON" \
+                    bash_command = f'data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)' \
+                                    + f" && cd {tm1_table}" \
+                                    + " && head -1 $data_file.jsonl > $data_file-sample.jsonl" \
+                                    + " && bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON" \
                                     + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg" \
-                                    + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}' \
-                                    + f' && rm -rf {tm1_table}'
+                                    + f' $data_file-sample.jsonl' \
+                                    + f' && cd .. && rm -rf {tm1_table}'
                 )
 
                 get_schema = PythonOperator(
