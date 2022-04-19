@@ -75,6 +75,12 @@ with DAG(
     render_template_as_native_obj=True,
 ) as dag:
 
+    # get_ts = BashOperator(
+    #     task_id  = f"get_ts",
+    #     cwd      = MAIN_PATH,
+    #     bash_command = 'echo {{ ts.split(":")[0].replace("-","").replace("T","") }}'
+    # )
+
     # set_name = BashOperator(
     #     task_id  = "set_name",
     #     cwd      = MAIN_PATH,
