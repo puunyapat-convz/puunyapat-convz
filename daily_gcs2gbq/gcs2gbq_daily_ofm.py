@@ -16,6 +16,7 @@ from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import pandas   as pd
+import pathlib
 import tempfile
 import logging
 import json
@@ -215,9 +216,11 @@ def _read_file(filename):
 
 def _check_xcom(table_name, tm1_varible):
     if len(tm1_varible) == 0:
-        log.info(f"Table [ {table_name} ] has no T-1 file to load.")        
+        log.info(f"Table [ {table_name} ] has no T-1 file to load.")
         return f"skip_load_{table_name}"
     else:
+        path = pathlib.Path(f'{MAIN_PATH}/{SOURCE_NAME}/{table_name}')
+        path.mkdir(parents=True, exist_ok=True)
         return [ f"drop_temp_{table_name}", f"create_schema_{table_name}", f"get_sample_{table_name}" ]
 
 def _get_schema(table_name):
@@ -310,8 +313,9 @@ with DAG(
                     task_id = f"create_tm1_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); mkdir -p {SOURCE_NAME}/{tm1_table};" \
-                                    # f"yesterday=$(sed 's/-/_/g' <<< {{{{ yesterday_ds }}}}); mkdir -p {SOURCE_NAME}/{tm1_table};" \
+                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});" \
+                                    # for manual run
+                                    # f"yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});" \
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
