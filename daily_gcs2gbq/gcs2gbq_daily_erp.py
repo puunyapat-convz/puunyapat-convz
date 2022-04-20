@@ -274,7 +274,7 @@ with DAG(
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
-    end_task   = DummyOperator(task_id = "end_task", trigger_rule = 'all_done')
+    end_task   = DummyOperator(task_id = "end_task")
 
     create_ds_final = BigQueryCreateEmptyDatasetOperator(
         task_id     = "create_ds_final",
