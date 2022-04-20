@@ -267,7 +267,7 @@ with DAG(
     dag_id="gcs2gbq_intraday_erp",
     # schedule_interval=None,
     schedule_interval="*/30 * * * *",
-    start_date=dt.datetime(2022, 4, 19),
+    start_date=dt.datetime(2022, 4, 20),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
@@ -279,7 +279,7 @@ with DAG(
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
-    end_task   = DummyOperator(task_id = "end_task", trigger_rule = 'all_done')
+    end_task   = DummyOperator(task_id = "end_task")
 
     create_ds_final = BigQueryCreateEmptyDatasetOperator(
         task_id     = "create_ds_final",
@@ -300,7 +300,7 @@ with DAG(
     )
 
     iterable_tables_list = Variable.get(
-        key=f'{SOURCE_NAME}_tables',
+        key=f'{SOURCE_NAME}_{SOURCE_TYPE}',
         default_var=['default_table'],
         deserialize_json=True
     )
@@ -318,9 +318,8 @@ with DAG(
                     task_id = f"create_tm1_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});" \
-                                    # for manual run
-                                    # f"yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});" \
+                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});" 
+                                    # f"yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});" ## for manual run
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
                                     + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
