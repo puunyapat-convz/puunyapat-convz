@@ -295,7 +295,7 @@ with DAG(
     )
 
     iterable_tables_list = Variable.get(
-        key=f'{SOURCE_NAME}_tables',
+        key=f'{SOURCE_NAME}_{SOURCE_TYPE}',
         default_var=['default_table'],
         deserialize_json=True
     )
