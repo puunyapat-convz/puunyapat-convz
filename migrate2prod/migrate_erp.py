@@ -336,7 +336,7 @@ with DAG(
                     bigquery_conn_id = "convz_dev_service_account",
                     project_id = PROJECT_DST,
                     dataset_id = DATASET_DST,
-                    table_id = f"{tm1_table.lower()}_daily_source",
+                    table_id = f"{tm1_table.lower()}_{SOURCE_TYPE}_source",
                     gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/{tm1_table}.json',
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
