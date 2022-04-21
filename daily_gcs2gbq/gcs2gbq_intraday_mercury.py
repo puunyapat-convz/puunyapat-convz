@@ -378,7 +378,7 @@ with DAG(
                 schema_to_gcs = ContentToGoogleCloudStorageOperator(
                     task_id = f'schema_to_gcs_{tm1_table}',
                     content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[0] }}}}',
-                    dst     = f'{SOURCE_NAME}/schemas/{tm1_table}_{SOURCE_TYPE}.json',
+                    dst     = f'{SOURCE_NAME}/schemas/{SOURCE_TYPE}_{tm1_table}.json',
                     bucket  = BUCKET_NAME,
                     gcp_conn_id = "convz_dev_service_account"
                 )
