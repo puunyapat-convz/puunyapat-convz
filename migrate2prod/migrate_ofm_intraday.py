@@ -199,9 +199,9 @@ with DAG(
     catchup=False,
     tags=['convz_prod_migration'],
     render_template_as_native_obj=True,
-    default_args={
-        'retries': 1,
-        'retry_delay': dt.timedelta(seconds=5),
+    # default_args={
+    #     'retries': 1,
+    #     'retry_delay': dt.timedelta(seconds=5),
     #     'depends_on_past': False,
     #     'email': ['airflow@example.com'],
     #     'email_on_failure': False,
@@ -218,7 +218,7 @@ with DAG(
     #     'on_retry_callback': another_function,
     #     'sla_miss_callback': yet_another_function,
     #     'trigger_rule': 'all_success'
-    },
+    # },
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
