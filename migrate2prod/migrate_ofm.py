@@ -317,7 +317,7 @@ with DAG(
                     project_id = PROJECT_DST,
                     dataset_id = DATASET_DST,
                     table_id = f"{tm1_table.lower()}_{SOURCE_TYPE}_source",
-                    gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/{tm1_table}.json',
+                    gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/{SOURCE_TYPE}_{tm1_table}.json',
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
