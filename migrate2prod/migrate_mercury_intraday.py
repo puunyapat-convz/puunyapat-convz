@@ -40,18 +40,18 @@ path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
-SCHEMA_SHEET   = "Field-ERP"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_SHEET   = "Field-Mercury"
+SCHEMA_COLUMNS = ["TABLE_CATALOG", "TABLE_NAME", "COLUMN_NAME", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_DST  = "central-cto-ofm-data-hub-prod"
-DATASET_DST  = "erp_ofm_intraday"
+DATASET_DST  = "mercury_ofm_intraday"
 
 PROJECT_SRC  = "central-cto-ofm-data-hub-dev"
-DATASET_SRC  = "ERP_source_intraday"
+DATASET_SRC  = "Mercury_source_intraday"
 
 LOCATION     = "asia-southeast1" 
 BUCKET_NAME  = "ofm-data"
-SOURCE_NAME  = "ERP"
+SOURCE_NAME  = "Mercury"
 SOURCE_TYPE  = "intraday"
 
 ## specify airbyte header field name which contains data here
@@ -234,7 +234,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "ERP_TBPSTHead" ]
+    # iterable_tables_list = [ "mercury_tbsellerprofile" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
