@@ -337,7 +337,7 @@ with DAG(
                     project_id = PROJECT_DST,
                     dataset_id = DATASET_DST,
                     table_id = f"{tm1_table.lower()}_{SOURCE_TYPE}_source",
-                    gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/{SOURCE_TYPE}_{tm1_table}.json',
+                    gcs_schema_object = f'{{{{ ti.xcom_pull(task_ids="schema_to_gcs_{tm1_table}") }}}}',
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
 
