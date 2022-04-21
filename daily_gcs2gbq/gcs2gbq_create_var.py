@@ -14,8 +14,8 @@ path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 
 BUCKET_NAME  = "ofm-data"
-SOURCE_NAME  = [ "ERP", "MDS", "officemate" ] 
-SOURCE_TYPE  = { "daily" : "| egrep -iv '^$|^erp_'", "intraday": "" }
+SOURCE_NAME  = [ "ERP", "MDS", "officemate", "Mercury" ] 
+SOURCE_TYPE  = { "daily" : "| egrep -iv '^$|^erp_|^mercury_'", "intraday": "" }
 
 ###############################
 
