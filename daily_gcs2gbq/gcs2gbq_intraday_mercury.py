@@ -267,7 +267,7 @@ with DAG(
     dag_id="gcs2gbq_intraday_mercury",
     # schedule_interval=None,
     schedule_interval="*/30 * * * *",
-    start_date=dt.datetime(2022, 4, 21, 9, 30, 00),
+    start_date=dt.datetime(2022, 4, 21),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
