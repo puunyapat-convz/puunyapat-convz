@@ -266,8 +266,9 @@ def _update_schema(stg_schema, fin_schema):
 with DAG(
     dag_id="gcs2gbq_intraday_mercury",
     # schedule_interval=None,
-    schedule_interval="*/30 * * * *",
-    start_date=dt.datetime(2022, 4, 21),
+    schedule_interval="3-59/30 * * * *",
+    start_date=dt.datetime(2022, 4, 21, 00, 00),
+    end_date=dt.datetime(2022, 4, 21, 18, 00),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
