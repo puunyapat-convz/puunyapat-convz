@@ -249,12 +249,12 @@ with DAG(
 
     end_task   = DummyOperator(task_id = "end_task")
 
-    # iterable_tables_list = Variable.get(
-    #     key=f'{SOURCE_NAME}_{SOURCE_TYPE}',
-    #     default_var=['default_table'],
-    #     deserialize_json=True
-    # )
-    iterable_tables_list = [ "OFM_tbeo_head" ]
+    iterable_tables_list = Variable.get(
+        key=f'{SOURCE_NAME}_{SOURCE_TYPE}',
+        default_var=['default_table'],
+        deserialize_json=True
+    )
+    # iterable_tables_list = [ "OFM_tbeo_head" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
