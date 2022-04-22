@@ -272,10 +272,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -321,8 +321,8 @@ with DAG(
                     bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});" 
                                     # f"yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});" ## for manual run
                                     + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
-                                    + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
+                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_{SOURCE_TYPE};"
+                                    + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_{SOURCE_TYPE}"'
                 )
 
                 check_tm1_list = BranchPythonOperator(
