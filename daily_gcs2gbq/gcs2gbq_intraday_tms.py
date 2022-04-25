@@ -33,6 +33,7 @@ BQ_DTYPE = [
     [ "INT64", "integer", "int", "tinyint", "smallint", "bigint" ],
     [ "FLOAT64", "float", "numeric", "decimal", "money" ],
     [ "BOOLEAN", "bit", "boolean" ],
+    [ "BYTES", "varbinary"],
     [ "DATE", "date" ],
     [ "TIME", "time" ],
     [ "DATETIME", "datetime", "datetime2", "smalldatetime" ],
