@@ -40,6 +40,13 @@ BQ_DTYPE = [
     [ "TIMESTAMP", "timestamp" ]
 ]
 
+DATE_FORMAT = {
+    "DATE" : "%FT%R:%E*SZ",
+    "TIME" : "%T",
+    "DATETIME"  : "%FT%R:%E*SZ",
+    "TIMESTAMP" : "%FT%R:%E*SZ"
+}
+
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
@@ -144,19 +151,21 @@ def _generate_schema(table_name, report_date, run_date):
                 break
 
         if gbq_data_type == "":
-            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
+            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'")
+        else:
+            gbq_data_type = gbq_data_type.upper()
        
-        if gbq_data_type.upper() in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
+        if gbq_data_type in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
             if gbq_field_mode == "NULLABLE":
                 method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` IS NULL," \
-                            + f" CAST(PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()}), NULL)"
+                            + f" CAST(PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type}), NULL)"
             else:
-                method = f"CAST (PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()})"
+                method = f"CAST (PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type})"
         else:
-            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()})"
+            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type})"
 
         query = f"{query}\t{method} AS `{rows.COLUMN_NAME}`,\n"
-        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
+        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type, "mode":gbq_field_mode })
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATETIME", "mode":"REQUIRED"})
@@ -166,7 +175,6 @@ def _generate_schema(table_name, report_date, run_date):
     query = f"{query}\tDATETIME('{run_date.strftime('%Y-%m-%dT%H:%M:%S')}') AS `run_date`\n"
 
     query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}_stg.{table_name}_{SOURCE_TYPE}_stg`\n"
-
 
     return schema, query
 

@@ -40,13 +40,21 @@ BQ_DTYPE = [
     [ "TIMESTAMP", "timestamp" ]
 ]
 
+DATE_FORMAT = {
+    "DATE" : "%FT%R:%E*SZ",
+    "TIME" : "%T",
+    "DATETIME"  : "%FT%R:%E*SZ",
+    "TIMESTAMP" : "%FT%R:%E*SZ"
+}
+
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-Officemate"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] 
+# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_ID   = "central-cto-ofm-data-hub-prod"
 DATASET_ID   = "officemate_ofm_intraday"
@@ -143,19 +151,21 @@ def _generate_schema(table_name, report_date, run_date):
                 break
 
         if gbq_data_type == "":
-            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
+            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'")
+        else:
+            gbq_data_type = gbq_data_type.upper()
        
-        if gbq_data_type.upper() in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
+        if gbq_data_type in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
             if gbq_field_mode == "NULLABLE":
                 method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` IS NULL," \
-                            + f" CAST(PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()}), NULL)"
+                            + f" CAST(PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type}), NULL)"
             else:
-                method = f"CAST (PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()})"
+                method = f"CAST (PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type})"
         else:
-            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()})"
+            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type})"
 
         query = f"{query}\t{method} AS `{rows.COLUMN_NAME}`,\n"
-        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
+        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type, "mode":gbq_field_mode })
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATETIME", "mode":"REQUIRED"})
@@ -166,7 +176,6 @@ def _generate_schema(table_name, report_date, run_date):
 
     query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}_stg.{table_name}_{SOURCE_TYPE}_stg`\n"
 
-
     return schema, query
 
 def _check_file(tablename, filename):
@@ -176,10 +185,8 @@ def _check_file(tablename, filename):
         lines  = f.readlines()
 
         for line in lines: 
-            print(len(line.strip().split(",")))
             if len(line.strip().split(",")) == 3:
                 result = True
-                break
             else:
                 result = False
                 break
@@ -189,6 +196,7 @@ def _check_file(tablename, filename):
             return f"skip_table_{tablename}"
         else:
             return f"read_tm1_list_{tablename}"
+
 
 def _read_file(filename, runtime):
     with open(filename) as f:
@@ -349,7 +357,7 @@ with DAG(
                 remove_file_list = BashOperator(
                     task_id  = f"remove_file_list_{tm1_table}",
                     cwd      = MAIN_PATH,
-                    trigger_rule = 'all_done',
+                    trigger_rule = 'none_failed_min_one_success',
                     bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_tm1_list_{tm1_table}') }}}}"
                 )
 
@@ -482,7 +490,6 @@ with DAG(
                                 "projectId": PROJECT_ID,
                                 "datasetId": DATASET_ID,
                                 "tableId": f'{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ts.split(":")[0].replace("-","").replace("T","") }}}}'
-                                # "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ds_nodash }}}}"
                             },
                             "createDisposition": "CREATE_IF_NEEDED",
                             "writeDisposition": "WRITE_TRUNCATE",
