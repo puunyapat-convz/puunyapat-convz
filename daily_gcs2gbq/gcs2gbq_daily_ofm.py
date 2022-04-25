@@ -407,7 +407,6 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-
                 get_sample = BashOperator(
                     task_id = f"get_sample_{tm1_table}",
                     cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
