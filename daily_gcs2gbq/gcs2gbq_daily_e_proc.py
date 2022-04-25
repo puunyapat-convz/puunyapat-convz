@@ -310,7 +310,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "tbaccount_segment" ]
+    # iterable_tables_list = [ "tbdepartment" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',

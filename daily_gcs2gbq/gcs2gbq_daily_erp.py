@@ -33,11 +33,19 @@ BQ_DTYPE = [
     [ "INT64", "integer", "int", "tinyint", "smallint", "bigint" ],
     [ "FLOAT64", "float", "numeric", "decimal", "money" ],
     [ "BOOLEAN", "bit", "boolean" ],
+    [ "BYTES", "varbinary"],
     [ "DATE", "date" ],
     [ "TIME", "time" ],
     [ "DATETIME", "datetime", "datetime2", "smalldatetime" ],
     [ "TIMESTAMP", "timestamp" ]
 ]
+
+DATE_FORMAT = {
+    "DATE" : "%FT%R:%E*SZ",
+    "TIME" : "%T",
+    "DATETIME"  : "%FT%R:%E*SZ",
+    "TIMESTAMP" : "%FT%R:%E*SZ"
+}
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
@@ -45,7 +53,8 @@ MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-ERP"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] 
+# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_ID   = "central-cto-ofm-data-hub-prod"
 DATASET_ID   = "erp_ofm_daily"
@@ -142,19 +151,21 @@ def _generate_schema(table_name, report_date, run_date):
                 break
 
         if gbq_data_type == "":
-            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
+            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'")
+        else:
+            gbq_data_type = gbq_data_type.upper()
        
-        if gbq_data_type.upper() in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
+        if gbq_data_type in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
             if gbq_field_mode == "NULLABLE":
                 method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` IS NULL," \
-                            + f" CAST(PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()}), NULL)"
+                            + f" CAST(PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type}), NULL)"
             else:
-                method = f"CAST (PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()})"
+                method = f"CAST (PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type})"
         else:
-            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()})"
+            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type})"
 
         query = f"{query}\t{method} AS `{rows.COLUMN_NAME}`,\n"
-        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
+        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type, "mode":gbq_field_mode })
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
@@ -313,12 +324,11 @@ with DAG(
                     task_id = f"create_tm1_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});" \
-                                    # for manual run
-                                    # f"yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});" \
-                                    + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_{SOURCE_TYPE};"
-                                    + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_{SOURCE_TYPE}"'
+                    bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
+                                    ## use yesterday_ds for manual run ^
+                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
+                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
+                                    + f' echo "{MAIN_PATH}/$temp"'
                 )
 
                 check_tm1_list = BranchPythonOperator(
@@ -397,25 +407,24 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                get_sample = GCSToLocalFilesystemOperator(
-                    task_id  = f"get_sample_{tm1_table}",
-                    bucket = BUCKET_NAME,
-                    object_name = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
-                    filename = f'{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].split("/")[-1] }}}}',
-                    gcp_conn_id="convz_dev_service_account",
+
+                get_sample = BashOperator(
+                    task_id = f"get_sample_{tm1_table}",
+                    cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
+                    bash_command = f'gsutil cp {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} .'
+                                        + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
+                                        + " && head -1 $data_file.jsonl > $data_file-sample.jsonl"
+                                        + " && echo $PWD/$data_file-sample.jsonl"
                 )
 
                 load_sample = BashOperator(
-                    task_id  = f"load_sample_{tm1_table}",
-                    cwd      = f"{MAIN_PATH}/{SOURCE_NAME}",
+                    task_id = f"load_sample_{tm1_table}",
+                    cwd     = f"{MAIN_PATH}/{SOURCE_NAME}",
                     trigger_rule = 'all_success',
-                    bash_command = f'data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)' \
-                                    + f" && cd {tm1_table}" \
-                                    + " && head -1 $data_file.jsonl > $data_file-sample.jsonl" \
-                                    + " && bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON" \
-                                    + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg" \
-                                    + f' $data_file-sample.jsonl' \
-                                    + f' && cd .. && rm -rf {tm1_table}'
+                    bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON"
+                                    + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
+                                    + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}'
+                                    + f' && rm -rf {tm1_table}'
                 )
 
                 get_schema = PythonOperator(
