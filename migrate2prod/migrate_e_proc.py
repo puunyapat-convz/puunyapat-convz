@@ -29,11 +29,19 @@ BQ_DTYPE = [
     [ "INT64", "integer", "int", "tinyint", "smallint", "bigint" ],
     [ "FLOAT64", "float", "numeric", "decimal", "money" ],
     [ "BOOLEAN", "bit", "boolean" ],
+    [ "BYTES", "varbinary" ],
     [ "DATE", "date" ],
     [ "TIME", "time" ],
     [ "DATETIME", "datetime", "datetime2", "smalldatetime" ],
     [ "TIMESTAMP", "timestamp" ]
 ]
+
+DATE_FORMAT = {
+    "DATE" : "%FT%R:%E*SZ",
+    "TIME" : "%T",
+    "DATETIME"  : "%FT%R:%E*SZ",
+    "TIMESTAMP" : "%FT%R:%E*SZ"
+}
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
@@ -143,10 +151,12 @@ def _generate_schema(table_name, report_date, run_date):
                 break
 
         if gbq_data_type == "":
-            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
+            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'")
+        else:
+            gbq_data_type = gbq_data_type.upper()
        
-        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
-        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
+        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type, "mode":gbq_field_mode })
+        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
@@ -196,10 +206,30 @@ with DAG(
     dag_id="migrate_e_proc",
     schedule_interval=None,
     # schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 3, 30),
+    start_date=dt.datetime(2022, 4, 20),
     catchup=False,
     tags=['convz_prod_migration'],
     render_template_as_native_obj=True,
+    default_args={
+        'retries': 1,
+        'retry_delay': dt.timedelta(seconds=5),
+    #     'depends_on_past': False,
+    #     'email': ['airflow@example.com'],
+    #     'email_on_failure': False,
+    #     'email_on_retry': False,
+    #     'queue': 'bash_queue',
+    #     'pool': 'backfill',
+    #     'priority_weight': 10,
+    #     'end_date': datetime(2016, 1, 1),
+    #     'wait_for_downstream': False,
+    #     'sla': timedelta(hours=2),
+    #     'execution_timeout': timedelta(seconds=300),
+    #     'on_failure_callback': some_function,
+    #     'on_success_callback': some_other_function,
+    #     'on_retry_callback': another_function,
+    #     'sla_miss_callback': yet_another_function,
+    #     'trigger_rule': 'all_success'
+    },
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -235,7 +265,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "arbatdtl" ]
+    # iterable_tables_list = [ "TBDepartment" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
@@ -257,15 +287,23 @@ with DAG(
 
                 skip_table = DummyOperator(task_id = f"skip_table_{tm1_table}")
 
-                list_report_dates = BigQueryExecuteQueryOperator(
-                    task_id  = f"list_report_dates_{tm1_table}",
-                    location = LOCATION,
-                    sql      = f"SELECT DISTINCT CAST(report_date AS STRING) AS report_date "
-                                + f"FROM `{PROJECT_SRC}.{DATASET_SRC}.{SOURCE_TYPE}_{tm1_table}` ORDER BY 1 ASC",
-                    destination_dataset_table = f"{PROJECT_SRC}.{DATASET_SRC}.{tm1_table}_report_date",
-                    write_disposition = "WRITE_TRUNCATE",
-                    bigquery_conn_id  = 'convz_dev_service_account',
-                    use_legacy_sql    = False,
+                list_report_dates = BigQueryInsertJobOperator( 
+                    task_id = f"list_report_dates_{tm1_table}",
+                    gcp_conn_id = "convz_dev_service_account",
+                    configuration = {
+                        "query": {
+                            "query": f"SELECT DISTINCT CAST(report_date AS STRING) AS report_date "
+                                        + f"FROM `{PROJECT_SRC}.{DATASET_SRC}.{SOURCE_TYPE}_{tm1_table}` ORDER BY 1 ASC",
+                            "destinationTable": {
+                                "projectId": PROJECT_SRC,
+                                "datasetId": DATASET_SRC,
+                                "tableId": f"{tm1_table}_report_date",
+                            },
+                            "createDisposition": "CREATE_IF_NEEDED",
+                            "writeDisposition": "WRITE_TRUNCATE",
+                            "useLegacySql": False,
+                        }
+                    }
                 )
 
                 get_list = BigQueryGetDataOperator(
@@ -354,16 +392,27 @@ with DAG(
                                 },
                             )
 
-                            extract_to_prod = BigQueryExecuteQueryOperator(
-                                task_id  = f"extract_to_prod_{tm1_table}_{report_date}",
-                                location = LOCATION,
-                                sql      = f'{{{{ ti.xcom_pull(task_ids="update_query_{tm1_table}_{report_date}") }}}}',
-                                destination_dataset_table = f"{PROJECT_DST}.{DATASET_DST}.{tm1_table.lower()}_{SOURCE_TYPE}_source$" 
+                            extract_to_prod = BigQueryInsertJobOperator( 
+                                task_id = f"extract_to_prod_{tm1_table}_{report_date}",
+                                gcp_conn_id = "convz_dev_service_account",
+                                configuration = {
+                                    "query": {
+                                        "query": f'{{{{ ti.xcom_pull(task_ids="update_query_{tm1_table}_{report_date}") }}}}',
+                                        "destinationTable": {
+                                            "projectId": PROJECT_DST,
+                                            "datasetId": DATASET_DST,
+                                            "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}_source$" 
                                                             + report_date.replace("-",''),
-                                time_partitioning = { "field":"report_date", "type":"DAY" },
-                                write_disposition = "WRITE_TRUNCATE",
-                                bigquery_conn_id  = 'convz_dev_service_account',
-                                use_legacy_sql    = False,
+                                        },
+                                        "createDisposition": "CREATE_IF_NEEDED",
+                                        "writeDisposition": "WRITE_TRUNCATE",
+                                        "useLegacySql": False,
+                                        "timePartitioning": {
+                                            "field":"report_date",
+                                            "type":"DAY"
+                                        },
+                                    }
+                                }
                             )
 
                             # Date level dependencies
