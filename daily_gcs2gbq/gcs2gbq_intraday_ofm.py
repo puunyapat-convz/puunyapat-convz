@@ -277,6 +277,7 @@ with DAG(
     # schedule_interval=None,
     schedule_interval="9-59/30 * * * *",
     start_date=dt.datetime(2022, 4, 22),
+    # end_date=dt.datetime(2022, 4, 22, 1, 10),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
