@@ -45,7 +45,8 @@ MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-Mercury"
-SCHEMA_COLUMNS = ["TABLE_CATALOG", "TABLE_NAME", "COLUMN_NAME", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_CATALOG", "TABLE_NAME", "COLUMN_NAME", "IS_NULLABLE"] 
+# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_ID   = "central-cto-ofm-data-hub-prod"
 DATASET_ID   = "mercury_ofm_intraday"
@@ -266,16 +267,16 @@ with DAG(
     dag_id="gcs2gbq_intraday_mercury",
     # schedule_interval=None,
     schedule_interval="3-59/30 * * * *",
-    start_date=dt.datetime(2022, 4, 22, 13, 34),
-    # end_date=dt.datetime(2022, 4, 22, 16, 4),
+    start_date=dt.datetime(2022, 4, 25, 0, 4),
+    # end_date=dt.datetime(2022, 4, 25, 1, 4),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'on_failure_callback': ofm_task_fail_slack_alert,
-    #     'retries': 0
-    # }
+    default_args={
+        'on_failure_callback': ofm_task_fail_slack_alert,
+        'retries': 0
+    }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -318,7 +319,8 @@ with DAG(
                     task_id = f"create_tm1_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" ## yesterday_ds for manual run
+                    bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
+                                        ## yesterday_ds for manual run ^
                                     + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
                                     + f' echo "{MAIN_PATH}/$temp"'
@@ -401,15 +403,6 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                # get_sample = GCSToLocalFilesystemOperator(
-                #     task_id  = f"get_sample_{tm1_table}",
-                #     bucket = BUCKET_NAME,
-                #     object_name = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
-                #     # filename = f'{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].split("/")[-1] }}}}',
-                #     filename = f'{MAIN_PATH}/{SOURCE_TYPE}_{tm1_table}_{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].split("/")[-1] }}}}',
-                #     gcp_conn_id="convz_dev_service_account",
-                # )
-
                 get_sample = BashOperator(
                     task_id = f"get_sample_{tm1_table}",
                     cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
@@ -427,11 +420,6 @@ with DAG(
                                     + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                                     + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}'
                                     + f' && rm -rf {tm1_table}'
-                                    # f" cd {tm1_table}"
-                                    # + f'data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
-                                    # + " && head -1 $data_file.jsonl > $data_file-sample.jsonl"
-                                    # + f' $data_file-sample.jsonl'
-                                    # + f' && rm -f $data_file*'
                 )
 
                 get_schema = PythonOperator(
@@ -494,7 +482,6 @@ with DAG(
                                 "projectId": PROJECT_ID,
                                 "datasetId": DATASET_ID,
                                 "tableId": f'{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ts.split(":")[0].replace("-","").replace("T","") }}}}'
-                                # "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ds_nodash }}}}"
                             },
                             "createDisposition": "CREATE_IF_NEEDED",
                             "writeDisposition": "WRITE_TRUNCATE",
