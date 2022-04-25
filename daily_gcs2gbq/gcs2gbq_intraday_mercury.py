@@ -320,7 +320,7 @@ with DAG(
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
                     bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
-                                        ## yesterday_ds for manual run ^
+                                        ## use yesterday_ds for manual run ^
                                     + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
                                     + f' echo "{MAIN_PATH}/$temp"'

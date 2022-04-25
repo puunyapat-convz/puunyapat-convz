@@ -318,11 +318,11 @@ with DAG(
                     task_id = f"create_tm1_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});" 
-                                    # f"yesterday=$(sed 's/-/_/g' <<< {{ yesterday_ds }});" ## for manual run
-                                    + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_{SOURCE_TYPE};"
-                                    + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_{SOURCE_TYPE}"'
+                    bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
+                                        ## use yesterday_ds for manual run ^
+                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
+                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
+                                    + f' echo "{MAIN_PATH}/$temp"'
                 )
 
                 check_tm1_list = BranchPythonOperator(
