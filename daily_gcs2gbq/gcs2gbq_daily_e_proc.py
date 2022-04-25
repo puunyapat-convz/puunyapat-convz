@@ -56,7 +56,7 @@ SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_ID   = "central-cto-ofm-data-hub-prod"
-DATASET_ID   = "epro_ofm_daily"
+DATASET_ID   = "e_proc_ofm_daily"
 LOCATION     = "asia-southeast1" 
 
 BUCKET_NAME  = "ofm-data"
