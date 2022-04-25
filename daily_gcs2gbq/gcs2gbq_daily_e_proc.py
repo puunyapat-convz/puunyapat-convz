@@ -33,6 +33,7 @@ BQ_DTYPE = [
     [ "INT64", "integer", "int", "tinyint", "smallint", "bigint" ],
     [ "FLOAT64", "float", "numeric", "decimal", "money" ],
     [ "BOOLEAN", "bit", "boolean" ],
+    [ "BYTES", "varbinary"],
     [ "DATE", "date" ],
     [ "TIME", "time" ],
     [ "DATETIME", "datetime", "datetime2", "smalldatetime" ],
@@ -269,18 +270,18 @@ def _update_schema(stg_schema, fin_schema):
     return json.dumps(json_schema, indent=4)
 
 with DAG(
-    dag_id="gcs2gbq_daily_ofm",
+    dag_id="gcs2gbq_daily_e_proc",
     # schedule_interval=None,
-    schedule_interval="00 01 * * *",
-    start_date=dt.datetime(2022, 4, 4),
+    schedule_interval="20 01 * * *",
+    start_date=dt.datetime(2022, 4, 24),
     catchup=True,
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
