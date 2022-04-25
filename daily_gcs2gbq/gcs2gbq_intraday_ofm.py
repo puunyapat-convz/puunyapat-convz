@@ -402,25 +402,23 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                get_sample = GCSToLocalFilesystemOperator(
-                    task_id  = f"get_sample_{tm1_table}",
-                    bucket = BUCKET_NAME,
-                    object_name = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
-                    filename = f'{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].split("/")[-1] }}}}',
-                    gcp_conn_id="convz_dev_service_account",
+                get_sample = BashOperator(
+                    task_id = f"get_sample_{tm1_table}",
+                    cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
+                    bash_command = f'gsutil cp {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} .'
+                                        + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
+                                        + " && head -1 $data_file.jsonl > $data_file-sample.jsonl"
+                                        + " && echo $PWD/$data_file-sample.jsonl"
                 )
 
                 load_sample = BashOperator(
-                    task_id  = f"load_sample_{tm1_table}",
-                    cwd      = f"{MAIN_PATH}/{SOURCE_NAME}",
+                    task_id = f"load_sample_{tm1_table}",
+                    cwd     = f"{MAIN_PATH}/{SOURCE_NAME}",
                     trigger_rule = 'all_success',
-                    bash_command = f'data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)' \
-                                    + f" && cd {tm1_table}" \
-                                    + " && head -1 $data_file.jsonl > $data_file-sample.jsonl" \
-                                    + " && bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON" \
-                                    + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg" \
-                                    + f' $data_file-sample.jsonl' \
-                                    + f' && cd .. && rm -rf {tm1_table}'
+                    bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON"
+                                    + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
+                                    + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}'
+                                    + f' && rm -rf {tm1_table}'
                 )
 
                 get_schema = PythonOperator(
