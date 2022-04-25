@@ -41,7 +41,8 @@ MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-Mercury"
-SCHEMA_COLUMNS = ["TABLE_CATALOG", "TABLE_NAME", "COLUMN_NAME", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_DST  = "central-cto-ofm-data-hub-prod"
 DATASET_DST  = "mercury_ofm_intraday"
@@ -192,10 +193,10 @@ def _check_table(table_name, source_list):
         return f"skip_table_{table_name}"
 
 with DAG(
-    dag_id="migrate_mercury_intraday",
+    dag_id="migrate_tms_intraday",
     schedule_interval=None,
     # schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 4, 15),
+    start_date=dt.datetime(2022, 4, 24),
     catchup=False,
     tags=['convz_prod_migration'],
     render_template_as_native_obj=True,
