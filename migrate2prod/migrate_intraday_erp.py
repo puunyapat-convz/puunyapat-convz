@@ -192,7 +192,7 @@ def _check_table(table_name, source_list):
         return f"skip_table_{table_name}"
 
 with DAG(
-    dag_id="migrate_erp_intraday",
+    dag_id="migrate_intraday_erp",
     schedule_interval=None,
     # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 4, 15),
