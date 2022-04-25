@@ -35,13 +35,21 @@ BQ_DTYPE = [
     [ "TIMESTAMP", "timestamp" ]
 ]
 
+DATE_FORMAT = {
+    "DATE" : "%FT%R:%E*SZ",
+    "TIME" : "%T",
+    "DATETIME"  : "%FT%R:%E*SZ",
+    "TIMESTAMP" : "%FT%R:%E*SZ"
+}
+
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-Officemate"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_DST  = "central-cto-ofm-data-hub-prod"
 DATASET_DST  = "officemate_ofm_intraday"
@@ -142,10 +150,12 @@ def _generate_schema(table_name, report_date, run_date):
                 break
 
         if gbq_data_type == "":
-            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
+            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'")
+        else:
+            gbq_data_type = gbq_data_type.upper()
        
-        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
-        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()}) AS `{rows.COLUMN_NAME}`,\n"
+        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type, "mode":gbq_field_mode })
+        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATETIME", "mode":"REQUIRED"})
@@ -199,9 +209,9 @@ with DAG(
     catchup=False,
     tags=['convz_prod_migration'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'retries': 1,
-    #     'retry_delay': dt.timedelta(seconds=5),
+    default_args={
+        'retries': 1,
+        'retry_delay': dt.timedelta(seconds=5),
     #     'depends_on_past': False,
     #     'email': ['airflow@example.com'],
     #     'email_on_failure': False,
@@ -218,7 +228,7 @@ with DAG(
     #     'on_retry_callback': another_function,
     #     'sla_miss_callback': yet_another_function,
     #     'trigger_rule': 'all_success'
-    # },
+    },
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -276,15 +286,23 @@ with DAG(
 
                 skip_table = DummyOperator(task_id = f"skip_table_{tm1_table}")
 
-                list_report_dates = BigQueryExecuteQueryOperator(
-                    task_id  = f"list_report_dates_{tm1_table}",
-                    location = LOCATION,
-                    sql      = f"SELECT DISTINCT CAST(report_date AS STRING) AS report_date "
-                                + f"FROM `{PROJECT_SRC}.{DATASET_SRC}.{SOURCE_TYPE}_{tm1_table}` ORDER BY 1 ASC",
-                    destination_dataset_table = f"{PROJECT_SRC}.{DATASET_SRC}.{tm1_table}_report_date",
-                    write_disposition = "WRITE_TRUNCATE",
-                    bigquery_conn_id  = 'convz_dev_service_account',
-                    use_legacy_sql    = False,
+                list_report_dates = BigQueryInsertJobOperator( 
+                    task_id = f"list_report_dates_{tm1_table}",
+                    gcp_conn_id = "convz_dev_service_account",
+                    configuration = {
+                        "query": {
+                            "query": f"SELECT DISTINCT CAST(report_date AS STRING) AS report_date "
+                                        + f"FROM `{PROJECT_SRC}.{DATASET_SRC}.{SOURCE_TYPE}_{tm1_table}` ORDER BY 1 ASC",
+                            "destinationTable": {
+                                "projectId": PROJECT_SRC,
+                                "datasetId": DATASET_SRC,
+                                "tableId": f"{tm1_table}_report_date",
+                            },
+                            "createDisposition": "CREATE_IF_NEEDED",
+                            "writeDisposition": "WRITE_TRUNCATE",
+                            "useLegacySql": False,
+                        }
+                    }
                 )
 
                 get_list = BigQueryGetDataOperator(
@@ -373,16 +391,27 @@ with DAG(
                                 },
                             )
 
-                            extract_to_prod = BigQueryExecuteQueryOperator(
-                                task_id  = f"extract_to_prod_{tm1_table}_{report_date}",
-                                location = LOCATION,
-                                sql      = f'{{{{ ti.xcom_pull(task_ids="update_query_{tm1_table}_{report_date}") }}}}',
-                                destination_dataset_table = f"{PROJECT_DST}.{DATASET_DST}.{tm1_table.lower()}_{SOURCE_TYPE}_source$" 
-                                                                +f"{report_date.replace('-','').replace('T','')}00" ,
-                                time_partitioning = { "field":"report_date", "type":"HOUR" },
-                                write_disposition = "WRITE_TRUNCATE",
-                                bigquery_conn_id  = 'convz_dev_service_account',
-                                use_legacy_sql    = False,
+                            extract_to_prod = BigQueryInsertJobOperator( 
+                                task_id = f"extract_to_prod_{tm1_table}_{report_date}",
+                                gcp_conn_id = "convz_dev_service_account",
+                                configuration = {
+                                    "query": {
+                                        "query": f'{{{{ ti.xcom_pull(task_ids="update_query_{tm1_table}_{report_date}") }}}}',
+                                        "destinationTable": {
+                                            "projectId": PROJECT_DST,
+                                            "datasetId": DATASET_DST,
+                                            "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}_source$" 
+                                                            + f"{report_date.replace('-','').replace('T','')}00" ,
+                                        },
+                                        "createDisposition": "CREATE_IF_NEEDED",
+                                        "writeDisposition": "WRITE_TRUNCATE",
+                                        "useLegacySql": False,
+                                        "timePartitioning": {
+                                            "field":"report_date",
+                                            "type":"HOUR"
+                                        },
+                                    }
+                                }
                             )
 
                             # Date level dependencies
