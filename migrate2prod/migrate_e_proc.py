@@ -212,7 +212,7 @@ with DAG(
     render_template_as_native_obj=True,
     default_args={
         'retries': 1,
-        'retry_delay': dt.timedelta(seconds=5),
+    #     'retry_delay': dt.timedelta(seconds=5),
     #     'depends_on_past': False,
     #     'email': ['airflow@example.com'],
     #     'email_on_failure': False,
