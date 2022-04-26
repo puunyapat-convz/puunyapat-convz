@@ -4,7 +4,7 @@ from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
-from utils.dag_notification    import ofm_task_fail_slack_alert
+from utils.dag_notification    import *
 
 from airflow.providers.google.cloud.hooks.gcs          import *
 from airflow.providers.google.cloud.operators.bigquery import *
@@ -173,14 +173,11 @@ def _generate_schema(table_name, report_date, run_date):
 
     query = f"{query}\tDATE('{report_date}') AS `report_date`,\n"
     query = f"{query}\tDATE('" + f"{run_date.strftime('%Y-%m-%d')}') AS `run_date`\n"
-
     query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}_stg.{table_name}_{SOURCE_TYPE}_stg`\n"
-    # query = f"{query}WHERE DATE(_PARTITIONTIME) = '{report_date}'"
-    # query = f"{query}LIMIT 10"
 
     return schema, query
 
-def _check_file(tablename, filename):
+def _check_file(ti, tablename, filename, gcs_path):
     result = False
 
     with open(filename) as f:
@@ -197,6 +194,7 @@ def _check_file(tablename, filename):
 
         if not result:
             log.info(f"Table [ {tablename} ] has no T-1 file(s) for this run.")
+            ti.xcom_push(key='gcs_uri', value=gcs_path)
             return f"skip_table_{tablename}"
         else:
             return f"read_tm1_list_{tablename}"
@@ -214,7 +212,6 @@ def _read_file(filename):
         for line in lines:
             split_line    = line.split(",")
             split_line[1] = int(split_line[1])
-            # split_line[2] = split_line[2].replace(f"gs://{BUCKET_NAME}/", "")
 
             if split_line[1] == 0:
                 log.warning(f"Skipped file [{split_line[2]}] which has size {split_line[1]} byte.")
@@ -324,9 +321,9 @@ with DAG(
                     task_id = f"create_tm1_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
-                    bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
-                                    ## use yesterday_ds for manual run ^
-                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
+                    bash_command = f"temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
+                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ds.replace("-","_") }}}}*.jsonl"'
+                                                                                    ## use yesterday_ds for manual run ^
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
                                     + f' echo "{MAIN_PATH}/$temp"'
                 )
@@ -336,11 +333,15 @@ with DAG(
                     python_callable=_check_file,
                     op_kwargs = { 
                         'tablename' : tm1_table,
-                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}'
+                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}',
+                        'gcs_path' : f"gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ds.replace('-','_') }}}}*.jsonl"
                     }
                 )
 
-                skip_table = DummyOperator(task_id = f"skip_table_{tm1_table}")
+                skip_table = DummyOperator(
+                    task_id = f"skip_table_{tm1_table}",
+                    on_success_callback = ofm_missing_file_slack_alert
+                )
 
                 read_tm1_list = PythonOperator(
                     task_id = f'read_tm1_list_{tm1_table}',
