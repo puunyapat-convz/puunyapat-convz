@@ -38,7 +38,7 @@ def ofm_missing_file_slack_alert(context):
     gcs_list = ti.xcom_pull(key='gcs_uri', task_ids=f'check_tm1_list_{table_name}').split('/')
 
     slack_msg = """
-            OFM alert: Data file [ {file_date} ] does not exist on GCS
+                OFM alert: Data file [ {file_date} ] does not exist on GCS
             GCS URI: {gcs_path}
             Task: {task}
             Dag: {dag}
