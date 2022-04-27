@@ -30,7 +30,7 @@ def ofm_task_fail_slack_alert(context):
 
     return failed_alert.execute(context=context)
 
-def ofm_missing_file_slack_alert(context):
+def ofm_missing_daily_file_slack_alert(context):
 
     ti = context.get('task_instance')
     ts = context.get('ts')
