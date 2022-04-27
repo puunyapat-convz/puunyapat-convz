@@ -212,6 +212,7 @@ def _read_file(filename):
         for line in lines:
             split_line    = line.split(",")
             split_line[1] = int(split_line[1])
+            split_line[2] = split_line[2].replace(f'gs://{BUCKET_NAME}/','')
 
             if split_line[1] == 0:
                 log.warning(f"Skipped file [{split_line[2]}] which has size {split_line[1]} byte.")
@@ -275,10 +276,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -408,23 +409,33 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                get_sample = BashOperator(
+                # get_sample = BashOperator(
+                #     task_id = f"get_sample_{tm1_table}",
+                #     cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
+                #     bash_command = f'gsutil cp {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} .'
+                #                         + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
+                #                         + " && head -1 $data_file.jsonl > $data_file-sample.jsonl"
+                #                         + " && echo $PWD/$data_file-sample.jsonl"
+                # )
+
+                get_sample = GCSToLocalFilesystemOperator(
                     task_id = f"get_sample_{tm1_table}",
-                    cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
-                    bash_command = f'gsutil cp {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} .'
-                                        + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
-                                        + " && head -1 $data_file.jsonl > $data_file-sample.jsonl"
-                                        + " && echo $PWD/$data_file-sample.jsonl"
+                    bucket  = BUCKET_NAME,
+                    gcp_conn_id = 'convz_dev_service_account',
+                    object_name = f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}}',
+                    filename = f'{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].split("/")[-1] }}}}'
                 )
 
                 load_sample = BashOperator(
                     task_id = f"load_sample_{tm1_table}",
                     cwd     = f"{MAIN_PATH}/{SOURCE_NAME}",
                     trigger_rule = 'all_success',
-                    bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON"
+                    bash_command = f'data_file={{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0].split("/")[-1].split(".")[0] }}}};'
+                                    + f" && cd {tm1_table} && head -1 $data_file.jsonl > $data_file-sample.jsonl"
+                                    + " && bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON"
                                     + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
-                                    + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}'
-                                    + f' && rm -rf {tm1_table}'
+                                    + f' $data_file-sample.jsonl'
+                                    + f' && cd .. && rm -rf {tm1_table}'
                 )
 
                 get_schema = PythonOperator(
