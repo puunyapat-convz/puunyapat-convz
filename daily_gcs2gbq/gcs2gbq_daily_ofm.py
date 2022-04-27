@@ -212,7 +212,6 @@ def _read_file(filename):
         for line in lines:
             split_line    = line.split(",")
             split_line[1] = int(split_line[1])
-            # split_line[2] = split_line[2].replace(f'gs://{BUCKET_NAME}/','')
 
             if split_line[1] == 0:
                 log.warning(f"Skipped file [{split_line[2]}] which has size {split_line[1]} byte.")
@@ -276,10 +275,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz_prod_airflow_style'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'on_failure_callback': ofm_task_fail_slack_alert,
-    #     'retries': 0
-    # }
+    default_args={
+        'on_failure_callback': ofm_task_fail_slack_alert,
+        'retries': 0
+    }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
