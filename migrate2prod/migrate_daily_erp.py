@@ -54,14 +54,15 @@ SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_DST  = "central-cto-ofm-data-hub-prod"
 DATASET_DST  = "erp_ofm_daily"
+TYPE_DST     = "daily"
 
 PROJECT_SRC  = "central-cto-ofm-data-hub-dev"
 DATASET_SRC  = "ERP_source"
+TYPE_SRC     = "daily"
 
 LOCATION     = "asia-southeast1" 
 BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "ERP"
-SOURCE_TYPE  = "daily"
 
 ## specify airbyte header field name which contains data here
 FIELD_PREFIX = ""
@@ -165,7 +166,7 @@ def _generate_schema(table_name, report_date, run_date):
     query = f"{query}\tDATE('{report_date}') AS `report_date`,\n"
     query = f"{query}\tDATE('{run_date}') AS `run_date`\n"
 
-    query = f"{query}FROM `{PROJECT_SRC}.{DATASET_SRC}.{SOURCE_TYPE}_{table_name}`\n"
+    query = f"{query}FROM `{PROJECT_SRC}.{DATASET_SRC}.{TYPE_SRC}_{table_name}`\n"
     query = f"{query}WHERE report_date = '{report_date}'"
     # query = f"{query}LIMIT 10"
 
@@ -193,7 +194,7 @@ def _update_query(report_date, run_date, sql):
 def _prepare_list(source_list):
     json_data  = json.loads(json.dumps(source_list))
     table_list = list(map(lambda datum: datum['tableId'], json_data))
-    final_list = [ name for name in table_list if re.match(f"^{SOURCE_TYPE}_",name) ]
+    final_list = [ name for name in table_list if re.match(f"^{TYPE_SRC}_",name) ]
     return final_list
 
 def _check_table(table_name, source_list):
@@ -261,7 +262,7 @@ with DAG(
     end_task   = DummyOperator(task_id = "end_task")
 
     iterable_tables_list = Variable.get(
-        key=f'{SOURCE_NAME}_{SOURCE_TYPE}',
+        key=f'{SOURCE_NAME}_{TYPE_SRC}',
         default_var=['default_table'],
         deserialize_json=True
     )
@@ -293,7 +294,7 @@ with DAG(
                     configuration = {
                         "query": {
                             "query": f"SELECT DISTINCT CAST(report_date AS STRING) AS report_date "
-                                        + f"FROM `{PROJECT_SRC}.{DATASET_SRC}.{SOURCE_TYPE}_{tm1_table}` ORDER BY 1 ASC",
+                                        + f"FROM `{PROJECT_SRC}.{DATASET_SRC}.{TYPE_SRC}_{tm1_table}` ORDER BY 1 ASC",
                             "destinationTable": {
                                 "projectId": PROJECT_SRC,
                                 "datasetId": DATASET_SRC,
@@ -344,7 +345,7 @@ with DAG(
                 schema_to_gcs = ContentToGoogleCloudStorageOperator(
                     task_id = f'schema_to_gcs_{tm1_table}',
                     content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[0] }}}}',
-                    dst     = f'{SOURCE_NAME}/schemas/{SOURCE_TYPE}_{tm1_table}.json',
+                    dst     = f'{SOURCE_NAME}/schemas/{TYPE_DST}_{tm1_table}.json',
                     bucket  = BUCKET_NAME,
                     gcp_conn_id = "convz_dev_service_account"
                 )
@@ -355,7 +356,7 @@ with DAG(
                     bigquery_conn_id = "convz_dev_service_account",
                     project_id = PROJECT_DST,
                     dataset_id = DATASET_DST,
-                    table_id = f"{tm1_table.lower()}_{SOURCE_TYPE}_source",
+                    table_id = f"{tm1_table.lower()}_{TYPE_DST}_source",
                     gcs_schema_object = f'{{{{ ti.xcom_pull(task_ids="schema_to_gcs_{tm1_table}") }}}}',
                     time_partitioning = { "field":"report_date", "type":"DAY" },
                 )
@@ -401,7 +402,7 @@ with DAG(
                                         "destinationTable": {
                                             "projectId": PROJECT_DST,
                                             "datasetId": DATASET_DST,
-                                            "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}_source$" 
+                                            "tableId": f"{tm1_table.lower()}_{TYPE_DST}_source$" 
                                                             + report_date.replace("-",''),
                                         },
                                         "createDisposition": "CREATE_IF_NEEDED",
