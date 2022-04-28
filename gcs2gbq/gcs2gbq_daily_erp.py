@@ -273,7 +273,7 @@ with DAG(
     start_date=dt.datetime(2022, 4, 4),
     catchup=True,
     max_active_runs=1,
-    tags=['convz_prod_airflow_style'],
+    tags=['convz', 'production', 'airflow_style', 'daily', 'erp'],
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
