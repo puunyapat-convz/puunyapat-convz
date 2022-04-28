@@ -210,7 +210,7 @@ with DAG(
     # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 4, 20),
     catchup=False,
-    tags=['convz_prod_migration'],
+    tags=['convz', 'production', 'migration', 'daily', 'e-procurement'],
     render_template_as_native_obj=True,
     default_args={
         'retries': 1,

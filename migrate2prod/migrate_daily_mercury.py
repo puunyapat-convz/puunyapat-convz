@@ -209,7 +209,7 @@ with DAG(
     # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 3, 29),
     catchup=False,
-    tags=['convz', 'production', 'migration'],
+    tags=['convz', 'production', 'migration', 'daily', 'mercury'],
     render_template_as_native_obj=True,
     default_args={
         'retries': 1,
