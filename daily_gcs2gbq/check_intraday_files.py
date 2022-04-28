@@ -21,7 +21,7 @@ def _count_file(source, table, filename, total, hour):
     with open(filename) as f:
         lines = f.read().splitlines()
 
-    if len(lines) < (int(total/24))*hour:
+    if len(lines) < (int(total/24))*int(hour):
         log.warning(f"Table [ {table} ] has files lower than expected.")
         return f"send_alert_{source}_{table}"
     else:
