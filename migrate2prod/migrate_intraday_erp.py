@@ -53,7 +53,7 @@ SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_DST  = "central-cto-ofm-data-hub-prod"
 DATASET_DST  = "erp_ofm_intraday"
-TYPE_DEST    = "intraday"
+TYPE_DST     = "intraday"
 
 PROJECT_SRC  = "central-cto-ofm-data-hub-dev"
 DATASET_SRC  = "ERP_source"
@@ -345,7 +345,7 @@ with DAG(
                 schema_to_gcs = ContentToGoogleCloudStorageOperator(
                     task_id = f'schema_to_gcs_{tm1_table}',
                     content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[0] }}}}',
-                    dst     = f'{SOURCE_NAME}/schemas/{TYPE_DEST}_{tm1_table}.json',
+                    dst     = f'{SOURCE_NAME}/schemas/{TYPE_DST}_{tm1_table}.json',
                     bucket  = BUCKET_NAME,
                     gcp_conn_id = "convz_dev_service_account"
                 )
@@ -356,7 +356,7 @@ with DAG(
                     bigquery_conn_id = "convz_dev_service_account",
                     project_id = PROJECT_DST,
                     dataset_id = DATASET_DST,
-                    table_id = f"{tm1_table.lower()}_{TYPE_DEST}_source",
+                    table_id = f"{tm1_table.lower()}_{TYPE_DST}_source",
                     gcs_schema_object = f'{{{{ ti.xcom_pull(task_ids="schema_to_gcs_{tm1_table}") }}}}',
                     time_partitioning = { "field":"report_date", "type":"HOUR" },
                 )
@@ -402,7 +402,7 @@ with DAG(
                                         "destinationTable": {
                                             "projectId": PROJECT_DST,
                                             "datasetId": DATASET_DST,
-                                            "tableId": f"{tm1_table.lower()}_{TYPE_DEST}_source$" 
+                                            "tableId": f"{tm1_table.lower()}_{TYPE_DST}_source$" 
                                                             + f"{report_date.replace('-','').replace('T','')}00" ,
                                         },
                                         "createDisposition": "CREATE_IF_NEEDED",
