@@ -48,7 +48,7 @@ MAIN_PATH = path + "/../data"
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-Mercury"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_CATALOG", "TABLE_NAME", "COLUMN_NAME", "IS_NULLABLE"]
 # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_DST  = "central-cto-ofm-data-hub-prod"
