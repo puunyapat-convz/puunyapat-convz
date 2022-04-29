@@ -26,9 +26,6 @@ BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "ERP"
 SOURCE_TYPE  = "daily"
 
-## airbyte header which contains data
-FIELD_PREFIX = "_airbyte_data."
-
 ###############################
 
 def _create_pattern(run_date):
@@ -48,11 +45,6 @@ def _check_list(ti, tablename, filename, run_date):
     with open(filename) as f:
         lines    = f.read().splitlines()
         gcs_list = []
-
-        ## Each valid line contains
-        ## [0] = tablename
-        ## [1] = filesize
-        ## [2] = GCS URI
 
         for line in lines:
             split_line = line.split("/")
