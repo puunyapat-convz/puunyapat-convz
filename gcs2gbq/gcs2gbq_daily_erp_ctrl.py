@@ -198,7 +198,7 @@ with DAG(
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": DATASET_ID,
-                                "tableId": f"{tm1_table}_{SOURCE_TYPE}"
+                                "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}"
                             },
                             "sourceFormat": "CSV",
                             "fieldDelimiter": "|",
