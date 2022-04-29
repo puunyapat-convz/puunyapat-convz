@@ -2,10 +2,9 @@ from airflow.hooks.base_hook import BaseHook
 from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 
 SLACK_OFM_ALERT_CONN = 'slack_ofm_alert_conn'
-slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
 
 def ofm_task_fail_slack_alert(context):
-
+    slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
     ti = context.get('task_instance')
     
     slack_msg = """
@@ -31,7 +30,7 @@ def ofm_task_fail_slack_alert(context):
     return failed_alert.execute(context=context)
 
 def ofm_missing_daily_file_slack_alert(context):
-
+    slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
     ti = context.get('task_instance')
     ts = context.get('ts')
     table_name = ti.task_id.split('_')[-1]
@@ -62,7 +61,7 @@ def ofm_missing_daily_file_slack_alert(context):
 
 
 def ofm_missing_intraday_file_slack_alert(context):
-
+    slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
     ti = context.get('task_instance')
     ts = context.get('ts')
     # table_name = ti.task_id.split('_')[-1]
