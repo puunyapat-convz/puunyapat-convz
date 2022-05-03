@@ -197,7 +197,7 @@ def _check_file(ti, tablename, filename, gcs_path):
             ti.xcom_push(key='gcs_uri', value=gcs_path)
             return f"skip_table_{tablename}"
         else:
-            return f"read_tm1_list_{tablename}"
+            return f"read_list_{tablename}"
 
 def _read_file(filename):
     with open(filename) as f:
@@ -317,8 +317,8 @@ with DAG(
         if iterable_tables_list:
             for index, tm1_table in enumerate(iterable_tables_list):
 
-                create_tm1_list = BashOperator(
-                    task_id = f"create_tm1_list_{tm1_table}",
+                create_list = BashOperator(
+                    task_id = f"create_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     trigger_rule = 'all_success',
                     bash_command = f"temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
@@ -328,12 +328,12 @@ with DAG(
                                     + f' echo "{MAIN_PATH}/$temp"'
                 )
 
-                check_tm1_list = BranchPythonOperator(
-                    task_id=f'check_tm1_list_{tm1_table}',
+                check_list = BranchPythonOperator(
+                    task_id=f'check_list_{tm1_table}',
                     python_callable=_check_file,
                     op_kwargs = { 
                         'tablename' : tm1_table,
-                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}',
+                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_list_{tm1_table}") }}}}',
                         'gcs_path' : f"gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ds.replace('-','_') }}}}*.jsonl"
                     }
                 )
@@ -343,19 +343,19 @@ with DAG(
                     on_success_callback = ofm_missing_daily_file_slack_alert
                 )
 
-                read_tm1_list = PythonOperator(
-                    task_id = f'read_tm1_list_{tm1_table}',
+                read_list = PythonOperator(
+                    task_id = f'read_list_{tm1_table}',
                     python_callable = _read_file,
                     op_kwargs={ 
-                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}'
+                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_list_{tm1_table}") }}}}'
                     },
                 )
 
-                remove_file_list = BashOperator(
-                    task_id  = f"remove_file_list_{tm1_table}",
+                remove_list = BashOperator(
+                    task_id  = f"remove_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     trigger_rule = 'all_done',
-                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_tm1_list_{tm1_table}') }}}}"
+                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_list_{tm1_table}') }}}}"
                 )
 
                 check_xcom = BranchPythonOperator(
@@ -363,7 +363,7 @@ with DAG(
                     python_callable=_check_xcom,
                     op_kwargs = {
                         'table_name'  : tm1_table,
-                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}'
+                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}") }}}}'
                     }
                 )
 
@@ -389,7 +389,7 @@ with DAG(
                     gcp_conn_id = "convz_dev_service_account"
                 )
 
-                create_final_table = BigQueryCreateEmptyTableOperator(
+                create_final = BigQueryCreateEmptyTableOperator(
                     task_id = f"create_final_{tm1_table}",
                     google_cloud_storage_conn_id = "convz_dev_service_account",
                     bigquery_conn_id = "convz_dev_service_account",
@@ -411,8 +411,8 @@ with DAG(
                 get_sample = BashOperator(
                     task_id = f"get_sample_{tm1_table}",
                     cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
-                    bash_command = f'gsutil cp {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} .'
-                                        + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
+                    bash_command = f'gsutil cp {{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0] }}}} .'
+                                        + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
                                         + " && head -1 $data_file.jsonl > $data_file-sample.jsonl"
                                         + " && echo $PWD/$data_file-sample.jsonl"
                 )
@@ -460,7 +460,7 @@ with DAG(
                     trigger_rule = 'all_success',
                     configuration = {
                         "load": {
-                            "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}',
+                            "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}") }}}}',
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": f"{DATASET_ID}_stg",
@@ -500,11 +500,11 @@ with DAG(
                 )
 
                 # TaskGroup load_files_tasks_group level dependencies
-                create_tm1_list >> check_tm1_list >> [ skip_table, read_tm1_list ] >> remove_file_list
-                read_tm1_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
+                create_list >> check_list >> [ skip_table, read_list ] >> remove_list
+                read_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
 
                 [ drop_temp, get_sample ] >> load_sample >> get_schema >> [ update_schema, drop_sample ] >> load_stg >> load_final
-                create_schema >> schema_to_gcs >> create_final_table >> load_final
+                create_schema >> schema_to_gcs >> create_final >> load_final
 
     # DAG level dependencies
     start_task >> [ create_ds_final, create_ds_stg ] >> load_folders_tasks_group
