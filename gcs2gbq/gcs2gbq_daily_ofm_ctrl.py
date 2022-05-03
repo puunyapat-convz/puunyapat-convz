@@ -1,12 +1,12 @@
 from airflow                   import configuration, DAG
 from airflow.operators.python  import PythonOperator, BranchPythonOperator
-from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 from dateutil                  import parser
 from utils.dag_notification    import *
 
+from airflow.providers.google.cloud.operators.gcs      import *
 from airflow.providers.google.cloud.operators.bigquery import *
 
 import datetime as dt
@@ -41,27 +41,28 @@ def _create_pattern(run_date):
         serialize_json = True
     )
 
-def _check_list(ti, tablename, filename, run_date):
-    with open(filename) as f:
-        lines    = f.read().splitlines()
-        gcs_list = []
+def _check_list(ti, tablename, epoch, run_date):
+    gcs_list = []
 
-        for line in lines:
-            split_line = line.split("/")
+    for ts in epoch:
+        blob_name = ti.xcom_pull(task_ids=f"list_file_{tablename}_{ts}")
+
+        for file in blob_name:
+            split_line = file.split("/")
             file_epoch = split_line[-1].split("_")[-1].split(".")[0]
 
             if dt.datetime.utcfromtimestamp(int(file_epoch)).strftime('%Y-%m-%d') == run_date:
-                gcs_list.append(line)
+                gcs_list.append(f'gs://{BUCKET_NAME}/{file}')
                 log.info(f"Added control file [{split_line[-1]}] to list.")
             else:
                 log.warning(f"Skipped file [{split_line[-1]}] with incorrect epoch timestamp.")
 
     if len(gcs_list) == 0:
         log.info(f"Table [ {tablename} ] has no control file(s) for this run.")
-        return [ f"skip_table_{tablename}", f"remove_list_{tablename}" ]
+        return f"skip_table_{tablename}"
     else:
         ti.xcom_push(key='gcs_uri', value=gcs_list)
-        return [ f"create_table_{tablename}", f"remove_list_{tablename}" ]
+        return f"create_table_{tablename}"
 
 def _remove_var():
     Variable.delete(key = f'{SOURCE_NAME}_{SOURCE_TYPE}_epoch')
@@ -136,45 +137,29 @@ with DAG(
                     if iterable_tables_list:
                         for epoch in iterable_epoch_list:
 
-                            list_file = BashOperator(
+                            list_file = GCSListObjectsOperator(
                                 task_id = f"list_file_{tm1_table}_{epoch}",
-                                cwd     = MAIN_PATH,
-                                bash_command = f"temp={SOURCE_NAME}_{SOURCE_TYPE}_{tm1_table}_ctrl.{epoch};" 
-                                                + f' gsutil ls "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{SOURCE_NAME}_{tm1_table}_{epoch}?????.ctrl" > $temp;'
-                                                + f' echo {MAIN_PATH}/$temp'
+                                bucket  = BUCKET_NAME, 
+                                prefix  = f'{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{SOURCE_NAME}_{tm1_table}_{epoch}', 
+                                delimiter   = '.ctrl',
+                                gcp_conn_id = 'convz_dev_service_account'
                             )
 
                             list_file
-
-                merge_list = BashOperator(
-                    task_id = f"merge_list_{tm1_table}",
-                    cwd     = MAIN_PATH,
-                    bash_command = f'epoch=($(echo "{{{{ var.value.{SOURCE_NAME}_{SOURCE_TYPE}_epoch.replace("\n","") }}}}" | tr -dc "[:alnum:]," | tr "," " "));'
-                                    + f' temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}_ctrl.XXXXXXXX); prefix={SOURCE_NAME}_{SOURCE_TYPE}_{tm1_table}_ctrl'
-                                    + f" && cat $prefix.${{epoch[0]}} $prefix.${{epoch[1]}} > $temp"
-                                    + f" && rm -f $prefix.${{epoch[0]}} $prefix.${{epoch[1]}}"
-                                    + f' && echo {MAIN_PATH}/$temp'
-                )
-
+                
                 check_list = BranchPythonOperator(
                     task_id=f'check_list_{tm1_table}',
                     python_callable=_check_list,
                     op_kwargs = { 
-                        'tablename' : tm1_table,
-                        'filename' : f'{{{{ ti.xcom_pull(task_ids="merge_list_{tm1_table}") }}}}',
+                        'tablename': tm1_table,
+                        'epoch'    : iterable_epoch_list,
                         'run_date' : '{{ ds }}' ## use yesterday_ds for manual run
                     }
                 )
 
                 skip_table = DummyOperator(
                     task_id = f"skip_table_{tm1_table}",
-                    # on_success_callback = ofm_missing_daily_file_slack_alert
-                )
-
-                remove_list = BashOperator(
-                    task_id  = f"remove_list_{tm1_table}",
-                    cwd      = MAIN_PATH,
-                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='merge_list_{tm1_table}') }}}}"
+                    on_success_callback = ofm_missing_daily_file_slack_alert
                 )
 
                 create_table = BigQueryCreateEmptyTableOperator(
@@ -198,7 +183,7 @@ with DAG(
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": DATASET_ID,
-                                "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}"
+                                "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}$" + '{{ ds_nodash }}'
                             },
                             "sourceFormat": "CSV",
                             "fieldDelimiter": "|",
@@ -211,7 +196,7 @@ with DAG(
                 )
 
                 # TaskGroup load_folders_tasks_group level dependencies
-                load_epoch_tasks_group >> merge_list >> check_list >> [ remove_list, skip_table, create_table ]
+                load_epoch_tasks_group >> check_list >> [ skip_table, create_table ]
                 create_table >> load_file
 
     # DAG level dependencies

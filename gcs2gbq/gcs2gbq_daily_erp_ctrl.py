@@ -1,6 +1,5 @@
 from airflow                   import configuration, DAG
 from airflow.operators.python  import PythonOperator, BranchPythonOperator
-from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
@@ -60,10 +59,10 @@ def _check_list(ti, tablename, epoch, run_date):
 
     if len(gcs_list) == 0:
         log.info(f"Table [ {tablename} ] has no control file(s) for this run.")
-        return [ f"skip_table_{tablename}", f"remove_list_{tablename}" ]
+        return f"skip_table_{tablename}"
     else:
         ti.xcom_push(key='gcs_uri', value=gcs_list)
-        return [ f"create_table_{tablename}", f"remove_list_{tablename}" ]
+        return f"create_table_{tablename}"
 
 def _remove_var():
     Variable.delete(key = f'{SOURCE_NAME}_{SOURCE_TYPE}_epoch')
@@ -160,13 +159,7 @@ with DAG(
 
                 skip_table = DummyOperator(
                     task_id = f"skip_table_{tm1_table}",
-                    # on_success_callback = ofm_missing_daily_file_slack_alert
-                )
-
-                remove_list = BashOperator(
-                    task_id  = f"remove_list_{tm1_table}",
-                    cwd      = MAIN_PATH,
-                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='merge_list_{tm1_table}') }}}}"
+                    on_success_callback = ofm_missing_daily_file_slack_alert
                 )
 
                 create_table = BigQueryCreateEmptyTableOperator(
@@ -203,7 +196,7 @@ with DAG(
                 )
 
                 # TaskGroup load_folders_tasks_group level dependencies
-                load_epoch_tasks_group >> check_list >> [ remove_list, skip_table, create_table ]
+                load_epoch_tasks_group >> check_list >> [ skip_table, create_table ]
                 create_table >> load_file
 
     # DAG level dependencies
