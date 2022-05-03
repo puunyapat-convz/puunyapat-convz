@@ -351,8 +351,8 @@ with DAG(
                     },
                 )
 
-                remove_file_list = BashOperator(
-                    task_id  = f"remove_file_list_{tm1_table}",
+                remove_list = BashOperator(
+                    task_id  = f"remove_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     trigger_rule = 'all_done',
                     bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_list_{tm1_table}') }}}}"
@@ -501,7 +501,7 @@ with DAG(
                 )
 
                 # TaskGroup load_files_tasks_group level dependencies
-                create_list >> check_list >> [ skip_table, read_list ] >> remove_file_list
+                create_list >> check_list >> [ skip_table, read_list ] >> remove_list
                 read_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
 
                 [ drop_temp, get_sample ] >> load_sample >> get_schema >> [ update_schema, drop_sample ] >> load_stg >> load_final
