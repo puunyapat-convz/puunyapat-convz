@@ -34,7 +34,7 @@ def ofm_missing_daily_file_slack_alert(context):
     ti = context.get('task_instance')
     ts = context.get('ts')
     table_name = ti.task_id.split('_')[-1]
-    gcs_list = ti.xcom_pull(key='gcs_uri', task_ids=f'check_tm1_list_{table_name}').split('/')
+    gcs_list = ti.xcom_pull(key='gcs_uri', task_ids=f'check_list_{table_name}').split('/')
 
     slack_msg = """
             OFM alert: Data file [ {file_date} ] does not exist on GCS
