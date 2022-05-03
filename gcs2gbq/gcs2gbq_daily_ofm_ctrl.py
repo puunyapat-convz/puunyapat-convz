@@ -41,11 +41,11 @@ def _create_pattern(run_date):
         serialize_json = True
     )
 
-def _check_list(ti, tablename, epoch, run_date):
+def _check_list(ti, tablename, prefix, epoch, run_date):
     gcs_list = []
 
     for ts in epoch:
-        blob_name = ti.xcom_pull(task_ids=f"list_file_{tablename}_{ts}")
+        blob_name  = ti.xcom_pull(task_ids=f"list_file_{tablename}_{ts}")
 
         for file in blob_name:
             split_line = file.split("/")
@@ -59,6 +59,7 @@ def _check_list(ti, tablename, epoch, run_date):
 
     if len(gcs_list) == 0:
         log.info(f"Table [ {tablename} ] has no control file(s) for this run.")
+        ti.xcom_push(key='gcs_uri', value=[prefix, epoch])
         return f"skip_table_{tablename}"
     else:
         ti.xcom_push(key='gcs_uri', value=gcs_list)
@@ -76,10 +77,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'airflow_style', 'daily', 'officemate', 'control'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'on_failure_callback': ofm_task_fail_slack_alert,
-    #     'retries': 0
-    # }
+    default_args={
+        'on_failure_callback': ofm_task_fail_slack_alert,
+        'retries': 0
+    }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -152,6 +153,7 @@ with DAG(
                     python_callable=_check_list,
                     op_kwargs = { 
                         'tablename': tm1_table,
+                        'prefix'   : f'gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{SOURCE_NAME}_{tm1_table}',
                         'epoch'    : iterable_epoch_list,
                         'run_date' : '{{ ds }}' ## use yesterday_ds for manual run
                     }
@@ -159,7 +161,7 @@ with DAG(
 
                 skip_table = DummyOperator(
                     task_id = f"skip_table_{tm1_table}",
-                    on_success_callback = ofm_missing_daily_file_slack_alert
+                    on_success_callback = ofm_missing_daily_ctrl_slack_alert
                 )
 
                 create_table = BigQueryCreateEmptyTableOperator(
