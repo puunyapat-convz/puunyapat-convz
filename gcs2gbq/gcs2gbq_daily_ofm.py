@@ -452,14 +452,6 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                # get_sample = GCSToLocalFilesystemOperator(
-                #     task_id = f"get_sample_{tm1_table}",
-                #     bucket  = BUCKET_NAME,
-                #     gcp_conn_id = 'convz_dev_service_account',
-                #     object_name = f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
-                #     filename = f'{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0].split("/")[-1] }}}}'
-                # )
-
                 get_sample = PythonOperator(
                     task_id=f"get_sample_{tm1_table}",
                     provide_context=True,
@@ -496,18 +488,6 @@ with DAG(
                         }
                     }
                 )
-
-                # load_sample = BashOperator(
-                #     task_id = f"load_sample_{tm1_table}",
-                #     cwd     = f"{MAIN_PATH}/{SOURCE_NAME}",
-                #     trigger_rule = 'all_success',
-                #     bash_command = f'data_file={{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}" }}}};'
-                #                     # + f" cd {tm1_table} && head -1 $data_file.jsonl > $data_file-sample.jsonl"
-                #                     + f" cd {tm1_table} && bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON"
-                #                     + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
-                #                     + f' $data_file'
-                #                     + f' && cd .. && rm -rf {tm1_table}'
-                # )
 
                 remove_sample = GCSDeleteObjectsOperator(
                     task_id = f"remove_sample_{tm1_table}",
