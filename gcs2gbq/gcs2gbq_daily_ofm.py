@@ -313,7 +313,6 @@ with DAG(
     # schedule_interval=None,
     schedule_interval="00 01 * * *",
     start_date=dt.datetime(2022, 4, 4),
-    # start_date=dt.datetime(2022, 5, 4),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily', 'officemate'],
