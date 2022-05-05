@@ -77,7 +77,7 @@ def ofm_missing_daily_ctrl_slack_alert(context):
             Execution Time: {exec_date}
             """.format(
                 gcs_path = '/'.join(gcs_list[0].split('/')[0:-1]),
-                filename = ' and '.join(filename),
+                filename = ' or '.join(filename),
                 task = ti.task_id,
                 dag  = ti.dag_id,
                 exec_date = ts,
