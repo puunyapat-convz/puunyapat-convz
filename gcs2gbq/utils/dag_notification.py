@@ -9,10 +9,10 @@ def ofm_task_fail_slack_alert(context):
     
     slack_msg = """
 OFM alert: *Task Failed*
-DAG: {dag} 
-Task: {task}  
-Execution Time: {exec_date}  
-Log Url: {log_url} 
+>DAG: {dag} 
+>Task: {task}  
+>Execution Time: {exec_date}  
+>Log Url: {log_url} 
             """.format(
                 task = ti.task_id,
                 dag  = ti.dag_id,
@@ -37,10 +37,10 @@ def ofm_missing_daily_file_slack_alert(context):
 
     slack_msg = """
 OFM alert: *Data file* on `{file_date}` does not exist on GCS
-DAG: {dag}
-Task: {task}
-GCS URI: {gcs_path}
-Execution Time: {exec_date}
+>DAG: {dag}
+>Task: {task}
+>GCS URI: {gcs_path}
+>Execution Time: {exec_date}
             """.format(
                 type = type,
                 task = ti.task_id,
@@ -100,10 +100,10 @@ def ofm_missing_intraday_file_slack_alert(context):
 
     slack_msg = """
 OFM alert: Task Failed. 
-Dag: {dag} 
-Task: {task}  
-Execution Time: {exec_date}  
-Log Url: {log_url} 
+>Dag: {dag} 
+>Task: {task}  
+>Execution Time: {exec_date}  
+>Log Url: {log_url} 
             """.format(
                 task = ti.task_id,
                 dag  = ti.dag_id,
