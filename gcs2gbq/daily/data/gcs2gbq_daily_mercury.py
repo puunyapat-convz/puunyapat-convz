@@ -317,10 +317,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'mercury'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'on_failure_callback': ofm_task_fail_slack_alert,
-    #     'retries': 0
-    # }
+    default_args={
+        'on_failure_callback': ofm_task_fail_slack_alert,
+        'retries': 0
+    }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -382,7 +382,7 @@ with DAG(
 
                 skip_table = DummyOperator(
                     task_id = f"skip_table_{tm1_table}",
-                    # on_success_callback = ofm_missing_daily_file_slack_alert
+                    on_success_callback = ofm_missing_daily_file_slack_alert
                 )
 
                 read_list = PythonOperator(
@@ -413,8 +413,6 @@ with DAG(
 
                 create_schema = PythonOperator(
                     task_id=f'create_schema_{tm1_table}',
-                    provide_context=True,
-                    dag=dag,
                     python_callable=_generate_schema,
                     op_kwargs={ 
                         'table_name' : tm1_table,
@@ -453,7 +451,6 @@ with DAG(
 
                 get_sample = PythonOperator(
                     task_id=f"get_sample_{tm1_table}",
-                    provide_context=True,
                     python_callable=_get_sample,
                     op_kwargs = {
                         "blobname": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
@@ -497,7 +494,6 @@ with DAG(
 
                 get_schema = PythonOperator(
                     task_id=f"get_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_get_schema,
                     op_kwargs = {
                         "table_name" : f"{tm1_table}_{SOURCE_TYPE}_stg"
@@ -508,7 +504,6 @@ with DAG(
 
                 update_schema = PythonOperator(
                     task_id=f"update_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_update_schema,
                     op_kwargs = {
                         "stg_schema": f'{{{{ ti.xcom_pull(task_ids="get_schema_{tm1_table}") }}}}',

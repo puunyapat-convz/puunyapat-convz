@@ -288,13 +288,13 @@ def blob_lines(filename):
         chunk = blob.download_as_bytes(
             start=position, 
             end=position + BLOB_CHUNK_SIZE,
-        ).decode('unicode_escape')
+        )
 
-        if '\n' in chunk:
-            part1, part2 = chunk.split('\n', 1)
-            buff.append(part1)
+        if b'\n' in chunk:
+            part1, part2 = chunk.split(b'\n', 1)
+            buff.append(part1.decode('utf-8'))
             yield ''.join(buff)
-            parts = part2.split('\n')
+            parts = part2.split(b'\n').decode('utf-8')
 
             for part in parts[:-1]:
                 yield part
@@ -315,12 +315,12 @@ with DAG(
     start_date=dt.datetime(2022, 4, 4),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'production', 'mario', 'daily', 'mds'],
+    tags=['convz', 'production', 'mario', 'daily_data', 'mds'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'on_failure_callback': ofm_task_fail_slack_alert,
-    #     'retries': 0
-    # }
+    default_args={
+        'on_failure_callback': ofm_task_fail_slack_alert,
+        'retries': 0
+    }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -382,7 +382,7 @@ with DAG(
 
                 skip_table = DummyOperator(
                     task_id = f"skip_table_{tm1_table}",
-                    # on_success_callback = ofm_missing_daily_file_slack_alert
+                    on_success_callback = ofm_missing_daily_file_slack_alert
                 )
 
                 read_list = PythonOperator(
@@ -413,8 +413,6 @@ with DAG(
 
                 create_schema = PythonOperator(
                     task_id=f'create_schema_{tm1_table}',
-                    provide_context=True,
-                    dag=dag,
                     python_callable=_generate_schema,
                     op_kwargs={ 
                         'table_name' : tm1_table,
@@ -453,7 +451,6 @@ with DAG(
 
                 get_sample = PythonOperator(
                     task_id=f"get_sample_{tm1_table}",
-                    provide_context=True,
                     python_callable=_get_sample,
                     op_kwargs = {
                         "blobname": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
@@ -497,7 +494,6 @@ with DAG(
 
                 get_schema = PythonOperator(
                     task_id=f"get_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_get_schema,
                     op_kwargs = {
                         "table_name" : f"{tm1_table}_{SOURCE_TYPE}_stg"
@@ -508,7 +504,6 @@ with DAG(
 
                 update_schema = PythonOperator(
                     task_id=f"update_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_update_schema,
                     op_kwargs = {
                         "stg_schema": f'{{{{ ti.xcom_pull(task_ids="get_schema_{tm1_table}") }}}}',
