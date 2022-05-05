@@ -5,22 +5,20 @@ from airflow      import configuration, DAG
 from google.cloud import storage
 
 import datetime as dt
+import logging
 
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
-BLOB_CHUNK_SIZE = 2560
+
+log       = logging.getLogger(__name__)
 
 def _get_csv_header(blob):
 
-    output = f"{MAIN_PATH}/{blob.split('/')[-1]}"
     for line in blob_lines(blob):
-
-        with open(file = output, mode='w') as f:
-            f.write(line)
-
-        return output
+        return line
 
 def blob_lines(filename):
+    BLOB_CHUNK_SIZE = 2560
     position = 0
     buff = []
     storage_client = storage.Client()
@@ -28,28 +26,27 @@ def blob_lines(filename):
     blob = storage.Blob(filename, bucket)
 
     while True:
-        chunk = blob.download_as_text(
+        chunk = blob.download_as_bytes(
             start=position, 
-            end=position + BLOB_CHUNK_SIZE, 
-            encoding="utf-8"
-        )
+            end=position + BLOB_CHUNK_SIZE,
+        ).decode('unicode_escape')
 
         if '\n' in chunk:
             part1, part2 = chunk.split('\n', 1)
             buff.append(part1)
             yield ''.join(buff)
             parts = part2.split('\n')
+
             for part in parts[:-1]:
                 yield part
+
             buff = [parts[-1]]
+            yield ''.join(buff)
+            return
         else:
             buff.append(chunk)
 
         position += BLOB_CHUNK_SIZE + 1  # Blob chunk is downloaded using closed interval
-
-        if len(chunk) < BLOB_CHUNK_SIZE:
-            yield ''.join(buff)
-            return
 
 
 with DAG(
@@ -79,7 +76,7 @@ with DAG(
         task_id=f"read_sample",
         python_callable=_get_csv_header,
         op_kwargs = {
-            "blob" : "Mercury/daily/tbproduct_content/2022_01_18_1642488959528_0.jsonl"
+            "blob" : "officemate/daily/tbseriesmaster/2022_05_04_1651700099134_0.jsonl"
         }
     )
 
