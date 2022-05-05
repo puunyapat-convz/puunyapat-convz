@@ -8,11 +8,11 @@ def ofm_task_fail_slack_alert(context):
     ti = context.get('task_instance')
     
     slack_msg = """
-            OFM alert: Task Failed.
-            Dag: {dag} 
-            Task: {task}  
-            Execution Time: {exec_date}  
-            Log Url: {log_url} 
+OFM alert: *Task Failed*
+DAG: {dag} 
+Task: {task}  
+Execution Time: {exec_date}  
+Log Url: {log_url} 
             """.format(
                 task = ti.task_id,
                 dag  = ti.dag_id,
@@ -36,11 +36,11 @@ def ofm_missing_daily_file_slack_alert(context):
     gcs_list = ti.xcom_pull(key='gcs_uri', task_ids=f'check_list_{table_name}').split('/')
 
     slack_msg = """
-            OFM alert: Data file on [ {file_date} ] does not exist on GCS
-            Dag: {dag}
-            Task: {task}
-            GCS URI: {gcs_path}
-            Execution Time: {exec_date}
+OFM alert: *Data file* on `{file_date}` does not exist on GCS
+DAG: {dag}
+Task: {task}
+GCS URI: {gcs_path}
+Execution Time: {exec_date}
             """.format(
                 type = type,
                 task = ti.task_id,
@@ -70,7 +70,6 @@ def ofm_missing_daily_ctrl_slack_alert(context):
     filename   = [ f"`{gcs_prefix}_{name}*.ctrl`" for name in gcs_list[1] ]
 
     slack_msg = """
-*** Test Message, please ignore ***
 OFM alert: *Control file* with prefix {filename} do not exist on GCS
 >DAG: {dag}
 >Task: {task}
