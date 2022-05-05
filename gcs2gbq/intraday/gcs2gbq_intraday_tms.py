@@ -276,7 +276,7 @@ with DAG(
     dag_id="gcs2gbq_intraday_tms",
     # schedule_interval=None,
     schedule_interval="1-59/30 * * * *",
-    start_date=dt.datetime(2022, 4, 25, 0, 0),
+    start_date=dt.datetime(2022, 4, 25),
     # end_date=dt.datetime(2022, 4, 25, 1, 32),
     catchup=True,
     max_active_runs=1,
