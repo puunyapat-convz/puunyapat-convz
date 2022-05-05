@@ -277,7 +277,7 @@ with DAG(
     # schedule_interval=None,
     schedule_interval="6-59/30 * * * *",
     start_date=dt.datetime(2022, 4, 20),
-    # end_date=dt.datetime(2022, 4, 25, 1, 32),
+    # end_date=dt.datetime(2022, 5, 5, 0, 40),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production' ,'mario', 'intraday_data', 'erp'],
