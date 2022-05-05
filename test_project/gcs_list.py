@@ -29,13 +29,13 @@ def blob_lines(filename):
         chunk = blob.download_as_bytes(
             start=position, 
             end=position + BLOB_CHUNK_SIZE,
-        ).decode('unicode_escape')
+        )
 
-        if '\n' in chunk:
-            part1, part2 = chunk.split('\n', 1)
-            buff.append(part1)
+        if b'\n' in chunk:
+            part1, part2 = chunk.split(b'\n', 1)
+            buff.append(part1.decode('utf-8'))
             yield ''.join(buff)
-            parts = part2.split('\n')
+            parts = part2.split(b'\n').decode('utf-8')
 
             for part in parts[:-1]:
                 yield part
@@ -76,7 +76,7 @@ with DAG(
         task_id=f"read_sample",
         python_callable=_get_csv_header,
         op_kwargs = {
-            "blob" : "officemate/daily/tbseriesmaster/2022_05_04_1651700099134_0.jsonl"
+            "blob" : "Mercury/daily/tbproduct_content/2022_05_04_1651705455208_0.jsonl"
         }
     )
 
