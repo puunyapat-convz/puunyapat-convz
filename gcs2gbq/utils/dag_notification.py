@@ -67,14 +67,15 @@ def ofm_missing_daily_ctrl_slack_alert(context):
 
     gcs_list   = ti.xcom_pull(key='gcs_uri', task_ids=f'check_list_{table_name}')
     gcs_prefix = gcs_list[0].split('/')[-1]
-    filename   = [ f"[{gcs_prefix}_{name}*.ctrl]" for name in gcs_list[1] ]
+    filename   = [ f"`{gcs_prefix}_{name}*.ctrl`" for name in gcs_list[1] ]
 
     slack_msg = """
-            OFM alert: Control file with prefix {filename} do not exist on GCS
-            Dag: {dag}
-            Task: {task}
-            GCS URI: {gcs_path}
-            Execution Time: {exec_date}
+*** Test Message, please ignore ***
+OFM alert: *Control file* with prefix {filename} do not exist on GCS
+>DAG: {dag}
+>Task: {task}
+>GCS URI: {gcs_path}
+>Execution Time: {exec_date}
             """.format(
                 gcs_path = '/'.join(gcs_list[0].split('/')[0:-1]),
                 filename = ' or '.join(filename),
