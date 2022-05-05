@@ -28,23 +28,19 @@ SOURCE_TYPE  = "daily"
 
 ###############################
 
-def _create_pattern(run_date):
+def _create_epoch(run_date):
     run_date = f'{run_date}T00:00:00Z'
     epoch    = int(parser.parse(run_date).timestamp())
 
     timestr = str(epoch)
     prefix  = int(timestr[:len(timestr)-5])
 
-    Variable.set(
-        key   = f'{SOURCE_NAME}_{SOURCE_TYPE}_epoch',
-        value = [ prefix, prefix+1 ],
-        serialize_json = True
-    )
+    return [ prefix, prefix+1 ]
 
 def _check_list(ti, tablename, prefix, epoch, run_date):
     gcs_list = []
 
-    for ts in epoch:
+    for ts in [0,1]:
         blob_name  = ti.xcom_pull(task_ids=f"list_file_{tablename}_{ts}")
 
         for file in blob_name:
@@ -65,9 +61,6 @@ def _check_list(ti, tablename, prefix, epoch, run_date):
         ti.xcom_push(key='gcs_uri', value=gcs_list)
         return f"create_table_{tablename}"
 
-def _remove_var():
-    Variable.delete(key = f'{SOURCE_NAME}_{SOURCE_TYPE}_epoch')
-
 with DAG(
     dag_id="gcs2gbq_daily_mds_ctrl",
     # schedule_interval=None,
@@ -75,7 +68,7 @@ with DAG(
     start_date=dt.datetime(2022, 4, 28),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'production', 'airflow_style', 'daily', 'mds', 'control'],
+    tags=['convz', 'production', 'mario', 'daily', 'mds', 'control'],
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
@@ -96,17 +89,11 @@ with DAG(
     )
 
     create_epoch = PythonOperator(
-        task_id = f'create_epoch',
-        python_callable = _create_pattern,
+        task_id = "create_epoch",
+        python_callable = _create_epoch,
         op_kwargs={ 
             'run_date' : '{{ ds }}' ## use yesterday_ds for manual run
         },
-    )
-
-    remove_var = PythonOperator(
-        task_id = f"remove_var",
-        trigger_rule = 'none_failed',
-        python_callable = _remove_var,
     )
 
     iterable_tables_list = Variable.get(
@@ -124,29 +111,23 @@ with DAG(
         if iterable_tables_list:
             for index, tm1_table in enumerate(iterable_tables_list):
 
-                iterable_epoch_list = Variable.get(
-                    key=f'{SOURCE_NAME}_{SOURCE_TYPE}_epoch',
-                    default_var=['default_epoch'],
-                    deserialize_json=True
-                )
-
                 with TaskGroup(
                     f'load_ctrl_epoch_{tm1_table}',
                     prefix_group_id=False,
                 ) as load_epoch_tasks_group:
 
-                    if iterable_tables_list:
-                        for epoch in iterable_epoch_list:
+                    for epoch_index in [0,1]:
 
-                            list_file = GCSListObjectsOperator(
-                                task_id = f"list_file_{tm1_table}_{epoch}",
-                                bucket  = BUCKET_NAME, 
-                                prefix  = f'{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{SOURCE_NAME}_{tm1_table}_{epoch}', 
-                                delimiter   = '.ctrl',
-                                gcp_conn_id = 'convz_dev_service_account'
-                            )
+                        list_file = GCSListObjectsOperator(
+                            task_id = f"list_file_{tm1_table}_{epoch_index}",
+                            bucket  = BUCKET_NAME, 
+                            prefix  = f'{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{SOURCE_NAME}_{tm1_table}_{{{{ ti.xcom_pull(task_ids="create_epoch")[{epoch_index}] }}}}', 
+                            delimiter   = '.ctrl',
+                            gcp_conn_id = 'convz_dev_service_account'
+                        )
 
-                            list_file
+                        ## TaskGroup load_epoch_tasks_group level dependencies
+                        list_file
                 
                 check_list = BranchPythonOperator(
                     task_id=f'check_list_{tm1_table}',
@@ -154,8 +135,8 @@ with DAG(
                     op_kwargs = { 
                         'tablename': tm1_table,
                         'prefix'   : f'gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{SOURCE_NAME}_{tm1_table}',
-                        'epoch'    : iterable_epoch_list,
-                        'run_date' : '{{ ds }}' ## use yesterday_ds for manual run
+                        'epoch'    : f'{{{{ ti.xcom_pull(task_ids="create_epoch") }}}}',
+                        'run_date' : '{{ data_interval_end.strftime("%Y-%m-%d") }}' ## epoch in filename is run_date (t-0), use ds for manual run
                     }
                 )
 
@@ -172,13 +153,12 @@ with DAG(
                     dataset_id = DATASET_ID,
                     table_id = f"{tm1_table.lower()}_{SOURCE_TYPE}",
                     gcs_schema_object = f'gs://{BUCKET_NAME}/{SOURCE_NAME}/schemas/control_files.json',
-                    time_partitioning = { "field":"created_at", "type":"DAY" },
+                    time_partitioning = { "type":"DAY" },
                 )
 
                 load_file = BigQueryInsertJobOperator( 
                     task_id = f"load_file_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "load": {
                             "sourceUris": f'{{{{ ti.xcom_pull(task_ids="check_list_{tm1_table}", key="gcs_uri") }}}}',
@@ -190,7 +170,7 @@ with DAG(
                             "sourceFormat": "CSV",
                             "fieldDelimiter": "|",
                             "skipLeadingRows": 1,
-                            "timePartitioning": { "field":"created_at", "type":"DAY" },
+                            "timePartitioning": { "type":"DAY" },
                             "createDisposition": "CREATE_IF_NEEDED",
                             "writeDisposition": "WRITE_TRUNCATE"
                         }
@@ -202,4 +182,4 @@ with DAG(
                 create_table >> load_file
 
     # DAG level dependencies
-    start_task >> create_ds_final >> create_epoch >> load_folders_tasks_group >> remove_var >> end_task
+    start_task >> create_ds_final >> create_epoch >> load_folders_tasks_group >> end_task
