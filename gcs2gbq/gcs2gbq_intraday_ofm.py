@@ -275,7 +275,7 @@ def _update_schema(stg_schema, fin_schema):
 with DAG(
     dag_id="gcs2gbq_intraday_ofm",
     # schedule_interval=None,
-    schedule_interval="9-59/30 * * * *",
+    schedule_interval="20-59/30 * * * *",
     start_date=dt.datetime(2022, 4, 22),
     # end_date=dt.datetime(2022, 4, 22, 1, 10),
     catchup=True,
