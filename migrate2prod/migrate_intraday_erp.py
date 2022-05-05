@@ -208,7 +208,7 @@ with DAG(
     # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 4, 15),
     catchup=False,
-    tags=['convz', 'production', 'migration', 'intraday', 'erp'],
+    tags=['convz', 'production', 'migrate', 'intraday_data', 'erp', 'mario'],
     render_template_as_native_obj=True,
     default_args={
         'retries': 1,
