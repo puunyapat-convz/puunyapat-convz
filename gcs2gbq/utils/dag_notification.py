@@ -99,11 +99,11 @@ def ofm_missing_intraday_file_slack_alert(context):
     # gcs_list = ti.xcom_pull(key='gcs_uri', task_ids=f'check_tm1_list_{table_name}').split('/')
 
     slack_msg = """
-            OFM alert: Task Failed. 
-            Dag: {dag} 
-            Task: {task}  
-            Execution Time: {exec_date}  
-            Log Url: {log_url} 
+OFM alert: Task Failed. 
+Dag: {dag} 
+Task: {task}  
+Execution Time: {exec_date}  
+Log Url: {log_url} 
             """.format(
                 task = ti.task_id,
                 dag  = ti.dag_id,
