@@ -4,7 +4,6 @@ from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
-from utils.dag_notification    import ofm_task_fail_slack_alert
 
 from airflow.providers.google.cloud.hooks.gcs          import *
 from airflow.providers.google.cloud.operators.bigquery import *
@@ -77,6 +76,7 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
                  content,
                  dst,
                  bucket,
+                 pretty,
                  gcp_conn_id='google_cloud_default',
                  mime_type='application/octet-stream',
                  delegate_to=None,
@@ -92,6 +92,7 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
         self.mime_type = mime_type
         self.delegate_to = delegate_to
         self.gzip = gzip
+        self.pretty = pretty
 
     def execute(self, context):
 
@@ -100,7 +101,8 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
             delegate_to=self.delegate_to
         )
 
-        json_data = json.dumps(self.content, indent=4)
+        temp_data = json.loads(self.content) if isinstance(self.content, str) else self.content
+        json_data = json.dumps(temp_data, indent=4) if self.pretty else json.dumps(temp_data, separators=(',', ':'))
 
         with tempfile.NamedTemporaryFile(prefix="gcs-local") as file:
             file.write(json_data.encode('utf-8'))
@@ -195,7 +197,7 @@ def _check_file(tablename, filename):
             log.info(f"Table [ {tablename} ] has no T-1 file(s) for this run.")
             return f"skip_table_{tablename}"
         else:
-            return f"read_tm1_list_{tablename}"
+            return f"read_list_{tablename}"
 
 
 def _read_file(filename, runtime):
@@ -207,7 +209,6 @@ def _read_file(filename, runtime):
         ## [0] = tablename
         ## [1] = filesize
         ## [2] = GCS URI
-        # log.info(f"runtime is {runtime}, type {type(runtime)}")
 
         for line in lines:
             split_line    = line.split(",")
@@ -219,7 +220,6 @@ def _read_file(filename, runtime):
                 ## Create file size > 0 list
                 epochtime = int(split_line[2].split('/')[-1].split('_')[3])/1000.0
                 timestamp = dt.datetime.utcfromtimestamp(epochtime).strftime('%Y%m%d%H')
-                # log.info(f"file [{split_line[2]}] has timestamp {timestamp}, type {type(timestamp)}")
 
                 if timestamp == str(runtime):
                     ## Add file with matched timestamp
@@ -272,20 +272,55 @@ def _update_schema(stg_schema, fin_schema):
     json_schema["fields"][index]["fields"] = stg_schema
     return json.dumps(json_schema, indent=4)
 
+def _get_sample(blobname):
+
+    for line in blob_lines(blobname):
+        return line
+
+def blob_lines(filename):
+    BLOB_CHUNK_SIZE = 2560
+    position = 0
+    buff = []
+    storage_client = storage.Client()
+    bucket = storage_client.get_bucket(BUCKET_NAME)
+    blob = storage.Blob(filename, bucket)
+
+    while True:
+        chunk = blob.download_as_bytes(
+            start=position, 
+            end=position + BLOB_CHUNK_SIZE,
+        )
+
+        if b'\n' in chunk:
+            part1, part2 = chunk.split(b'\n', 1)
+            buff.append(part1.decode('utf-8','replace'))
+            yield ''.join(buff)
+            parts = part2.split(b'\n')
+
+            for part in parts[:-1]:
+                yield part.decode('utf-8','replace')
+
+            buff = [parts[-1].decode('utf-8','replace')]
+            yield ''.join(buff)
+            return
+        else:
+            buff.append(chunk.decode('utf-8','replace'))
+
+        position += BLOB_CHUNK_SIZE + 1  # Blob chunk is downloaded using closed interval
+
 with DAG(
     dag_id="gcs2gbq_intraday_erp",
     # schedule_interval=None,
     schedule_interval="6-59/30 * * * *",
     start_date=dt.datetime(2022, 4, 20),
-    # end_date=dt.datetime(2022, 5, 5, 0, 40),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production' ,'mario', 'intraday_data', 'erp'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -324,42 +359,41 @@ with DAG(
         if iterable_tables_list:
             for index, tm1_table in enumerate(iterable_tables_list):
 
-                create_tm1_list = BashOperator(
-                    task_id = f"create_tm1_list_{tm1_table}",
+                create_list = BashOperator(
+                    task_id = f"create_list_{tm1_table}",
                     cwd     = MAIN_PATH,
-                    trigger_rule = 'all_success',
-                    bash_command = f"yesterday=$(sed 's/-/_/g' <<< {{{{ ds }}}}); temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
-                                    ## use yesterday_ds for manual run ^
-                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
+                    bash_command = f"temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
+                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ds.replace("-","_") }}}}*.jsonl"'
+                                                                                    ## use yesterday_ds for manual run ^
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
                                     + f' echo "{MAIN_PATH}/$temp"'
                 )
 
-                check_tm1_list = BranchPythonOperator(
-                    task_id=f'check_tm1_list_{tm1_table}',
+                check_list = BranchPythonOperator(
+                    task_id=f'check_list_{tm1_table}',
                     python_callable=_check_file,
                     op_kwargs = { 
                         'tablename' : tm1_table,
-                        'filename'  : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}'
+                        'filename'  : f'{{{{ ti.xcom_pull(task_ids="create_list_{tm1_table}") }}}}'
                     }
                 )
 
                 skip_table = DummyOperator(task_id = f"skip_table_{tm1_table}")
 
-                read_tm1_list = PythonOperator(
-                    task_id = f'read_tm1_list_{tm1_table}',
+                read_list = PythonOperator(
+                    task_id = f'read_list_{tm1_table}',
                     python_callable = _read_file,
                     op_kwargs={ 
-                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}',
+                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_list_{tm1_table}") }}}}',
                         'runtime' : '{{ ts.split(":")[0].replace("-","").replace("T","") }}'
                     },
                 )
 
-                remove_file_list = BashOperator(
-                    task_id  = f"remove_file_list_{tm1_table}",
+                remove_list = BashOperator(
+                    task_id  = f"remove_list_{tm1_table}",
                     cwd      = MAIN_PATH,
-                    trigger_rule = 'none_failed_min_one_success',
-                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_tm1_list_{tm1_table}') }}}}"
+                    trigger_rule = 'none_failed',
+                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_list_{tm1_table}') }}}}"
                 )
 
                 check_xcom = BranchPythonOperator(
@@ -367,7 +401,7 @@ with DAG(
                     python_callable=_check_xcom,
                     op_kwargs = {
                         'table_name'  : tm1_table,
-                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}'
+                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}") }}}}'
                     }
                 )
 
@@ -375,8 +409,6 @@ with DAG(
 
                 create_schema = PythonOperator(
                     task_id=f'create_schema_{tm1_table}',
-                    provide_context=True,
-                    dag=dag,
                     python_callable=_generate_schema,
                     op_kwargs={ 
                         'table_name' : tm1_table,
@@ -390,7 +422,8 @@ with DAG(
                     content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[0] }}}}',
                     dst     = f'{SOURCE_NAME}/schemas/{SOURCE_TYPE}_{tm1_table}.json',
                     bucket  = BUCKET_NAME,
-                    gcp_conn_id = "convz_dev_service_account"
+                    pretty  = True,
+                    gcp_conn_id = "convz_dev_service_account",
                 )
 
                 create_final_table = BigQueryCreateEmptyTableOperator(
@@ -412,37 +445,60 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                get_sample = BashOperator(
-                    task_id = f"get_sample_{tm1_table}",
-                    cwd     = f"{MAIN_PATH}/{SOURCE_NAME}/{tm1_table}",
-                    bash_command = f'gsutil cp {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} .'
-                                        + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)'
-                                        + " && head -1 $data_file.jsonl > $data_file-sample.jsonl"
-                                        + " && echo $PWD/$data_file-sample.jsonl"
+                get_sample = PythonOperator(
+                    task_id=f"get_sample_{tm1_table}",
+                    python_callable=_get_sample,
+                    op_kwargs = {
+                        "blobname": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
+                    }
                 )
 
-                load_sample = BashOperator(
+                save_sample = ContentToGoogleCloudStorageOperator(
+                    task_id = f'save_sample_{tm1_table}',
+                    content = f'{{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}',
+                    dst     = f'{SOURCE_NAME}/sample/{SOURCE_TYPE}_{tm1_table}-sample.jsonl',
+                    bucket  = BUCKET_NAME,
+                    pretty  = False,
+                    gcp_conn_id = "convz_dev_service_account"
+                )
+
+                load_sample = BigQueryInsertJobOperator( 
                     task_id = f"load_sample_{tm1_table}",
-                    cwd     = f"{MAIN_PATH}/{SOURCE_NAME}",
-                    trigger_rule = 'all_success',
-                    bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON"
-                                    + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
-                                    + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}'
-                                    + f' && rm -rf {tm1_table}'
+                    gcp_conn_id = "convz_dev_service_account",
+                    configuration = {
+                        "load": {
+                            "sourceUris": [ f'{{{{ ti.xcom_pull(task_ids="save_sample_{tm1_table}") }}}}' ],
+                            "destinationTable": {
+                                "projectId": PROJECT_ID,
+                                "datasetId": f"{DATASET_ID}_stg",
+                                "tableId": f"{tm1_table}_{SOURCE_TYPE}_stg"
+                            },
+                            "autodetect": True,
+                            "createDisposition": "CREATE_IF_NEEDED",
+                            "sourceFormat": "NEWLINE_DELIMITED_JSON",
+                        }
+                    }
+                )
+
+                remove_sample = GCSDeleteObjectsOperator(
+                    task_id = f"remove_sample_{tm1_table}",
+                    objects = [ f'{{{{ ti.xcom_pull(task_ids="save_sample_{tm1_table}").replace("gs://{BUCKET_NAME}/","") }}}}' ], 
+                    bucket_name = BUCKET_NAME, 
+                    gcp_conn_id = 'convz_dev_service_account'
                 )
 
                 get_schema = PythonOperator(
                     task_id=f"get_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_get_schema,
                     op_kwargs = {
                         "table_name" : f"{tm1_table}_{SOURCE_TYPE}_stg"
                     }
                 )
 
+                join_point = DummyOperator(task_id = f"join_point_{tm1_table}")
+
                 update_schema = PythonOperator(
                     task_id=f"update_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_update_schema,
                     op_kwargs = {
                         "stg_schema": f'{{{{ ti.xcom_pull(task_ids="get_schema_{tm1_table}") }}}}',
@@ -461,10 +517,9 @@ with DAG(
                 load_stg = BigQueryInsertJobOperator( 
                     task_id = f"load_stg_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "load": {
-                            "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}',
+                            "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}") }}}}',
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": f"{DATASET_ID}_stg",
@@ -483,7 +538,6 @@ with DAG(
                 load_final = BigQueryInsertJobOperator( 
                     task_id = f"load_final_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "query": {
                             "query": f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
@@ -501,10 +555,10 @@ with DAG(
                 )
 
                 # TaskGroup load_files_tasks_group level dependencies
-                create_tm1_list >> check_tm1_list >> [ skip_table, read_tm1_list ] >> remove_file_list
-                read_tm1_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
+                create_list >> check_list >> [ skip_table, read_list ] >> remove_list
+                read_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
 
-                [ drop_temp, get_sample ] >> load_sample >> get_schema >> [ update_schema, drop_sample ] >> load_stg >> load_final
+                [ drop_temp, get_sample ] >> save_sample >> load_sample >> [ remove_sample, get_schema ] >> join_point >> [ update_schema, drop_sample ] >> load_stg >> load_final
                 create_schema >> schema_to_gcs >> create_final_table >> load_final
 
     # DAG level dependencies
