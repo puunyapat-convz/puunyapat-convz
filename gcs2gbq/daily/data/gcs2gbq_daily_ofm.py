@@ -382,7 +382,7 @@ with DAG(
 
                 skip_table = DummyOperator(
                     task_id = f"skip_table_{tm1_table}",
-                    on_success_callback = ofm_missing_daily_file_slack_alert
+                    # on_success_callback = ofm_missing_daily_file_slack_alert
                 )
 
                 read_list = PythonOperator(
