@@ -102,10 +102,8 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
             delegate_to=self.delegate_to
         )
 
-        if self.pretty:
-            json_data = json.dumps(self.content, indent=4)
-        else:
-            json_data = json.dumps(self.content, separators=(',', ':'))
+        temp_data = json.loads(self.content) if isinstance(self.content, str) else self.content
+        json_data = json.dumps(temp_data, indent=4) if self.pretty else json.dumps(temp_data, separators=(',', ':'))
 
         with tempfile.NamedTemporaryFile(prefix="gcs-local") as file:
             file.write(json_data.encode('utf-8'))
@@ -362,7 +360,6 @@ with DAG(
                 create_list = BashOperator(
                     task_id = f"create_list_{tm1_table}",
                     cwd     = MAIN_PATH,
-                    trigger_rule = 'all_success',
                     bash_command = f"temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
                                     + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ds.replace("-","_") }}}}*.jsonl"'
                                                                                     ## use yesterday_ds for manual run ^
@@ -469,7 +466,6 @@ with DAG(
                 load_sample = BigQueryInsertJobOperator( 
                     task_id = f"load_sample_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "load": {
                             "sourceUris": [ f'{{{{ ti.xcom_pull(task_ids="save_sample_{tm1_table}") }}}}' ],
@@ -522,7 +518,6 @@ with DAG(
                 load_stg = BigQueryInsertJobOperator( 
                     task_id = f"load_stg_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "load": {
                             "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}") }}}}',
@@ -544,7 +539,6 @@ with DAG(
                 load_final = BigQueryInsertJobOperator( 
                     task_id = f"load_final_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "query": {
                             "query": f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
