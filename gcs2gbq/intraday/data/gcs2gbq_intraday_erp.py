@@ -160,8 +160,8 @@ def _generate_schema(table_name, report_date, run_date):
        
         if gbq_data_type in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
             if gbq_field_mode == "NULLABLE":
-                method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` IS NULL," \
-                            + f" CAST(PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type}), NULL)"
+                method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` = ''," \
+                            + f" NULL, CAST(PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type}))"
             else:
                 method = f"CAST (PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type})"
         else:
