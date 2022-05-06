@@ -33,18 +33,18 @@ def blob_lines(filename):
 
         if b'\n' in chunk:
             part1, part2 = chunk.split(b'\n', 1)
-            buff.append(part1.decode('utf-8'))
+            buff.append(part1.decode('utf-8','replace'))
             yield ''.join(buff)
-            parts = part2.split(b'\n').decode('utf-8')
+            parts = part2.split(b'\n')
 
             for part in parts[:-1]:
-                yield part
+                yield part.decode('utf-8','replace')
 
-            buff = [parts[-1]]
+            buff = [parts[-1].decode('utf-8','replace')]
             yield ''.join(buff)
             return
         else:
-            buff.append(chunk)
+            buff.append(chunk.decode('utf-8','replace'))
 
         position += BLOB_CHUNK_SIZE + 1  # Blob chunk is downloaded using closed interval
 
@@ -53,10 +53,10 @@ with DAG(
     dag_id="a_gcs_list",
     schedule_interval=None,
     # schedule_interval="00 03 * * *",
-    start_date=dt.datetime(2022, 4, 28),
-    catchup=True,
+    start_date=dt.datetime(2022, 5, 5),
+    catchup=False,
     max_active_runs=1,
-    tags=['convz', 'develop', 'airflow_style'],
+    tags=['convz', 'develop', 'mario'],
     render_template_as_native_obj=True,
     # default_args={
     #     'on_failure_callback': ofm_task_fail_slack_alert,
@@ -72,12 +72,20 @@ with DAG(
     #     gcp_conn_id = 'convz_dev_service_account'
     # )
 
-    read_sample = PythonOperator(
-        task_id=f"read_sample",
+    read_sample_1 = PythonOperator(
+        task_id=f"read_sample_epro",
         python_callable=_get_csv_header,
         op_kwargs = {
-            "blob" : "Mercury/daily/tbproduct_content/2022_05_04_1651705455208_0.jsonl"
+            "blob" : "E-Procurement/daily/TBOrder/2022_05_05_1651791971953_0.jsonl"
         }
     )
 
-    read_sample
+    read_sample_2 = PythonOperator(
+        task_id=f"read_sample_merc",
+        python_callable=_get_csv_header,
+        op_kwargs = {
+            "blob" : "Mercury/daily/tbproduct_content/2022_05_05_1651791856272_0.jsonl"
+        }
+    )
+
+    read_sample_1 >> read_sample_2
