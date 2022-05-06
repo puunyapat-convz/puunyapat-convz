@@ -88,4 +88,12 @@ with DAG(
         }
     )
 
-    read_sample_1 >> read_sample_2
+    read_sample_3 = PythonOperator(
+        task_id=f"read_sample_erp",
+        python_callable=_get_csv_header,
+        op_kwargs = {
+            "blob" : "ERP/intraday/ERP_TBProductPatternControl/2022_05_06_1651817228637_0.jsonl"
+        }
+    )
+    
+    read_sample_1 >> read_sample_2 >> read_sample_3
