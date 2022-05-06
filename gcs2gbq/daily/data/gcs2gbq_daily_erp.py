@@ -292,18 +292,18 @@ def blob_lines(filename):
 
         if b'\n' in chunk:
             part1, part2 = chunk.split(b'\n', 1)
-            buff.append(part1.decode('utf-8'))
+            buff.append(part1.decode('utf-8','replace'))
             yield ''.join(buff)
-            parts = part2.split(b'\n').decode('utf-8')
+            parts = part2.split(b'\n')
 
             for part in parts[:-1]:
-                yield part
+                yield part.decode('utf-8','replace')
 
-            buff = [parts[-1]]
+            buff = [parts[-1].decode('utf-8','replace')]
             yield ''.join(buff)
             return
         else:
-            buff.append(chunk)
+            buff.append(chunk.decode('utf-8','replace'))
 
         position += BLOB_CHUNK_SIZE + 1  # Blob chunk is downloaded using closed interval
 
