@@ -328,7 +328,7 @@ with DAG(
                     dataset_id  = f'{DATASET_SRC}',
                     table_id    = f"{tm1_table}_report_date",
                     gcp_conn_id = 'convz_dev_service_account',
-                    max_results = 100,
+                    max_results = 1000,
                     selected_fields='report_date'
                 )
 
