@@ -155,9 +155,18 @@ def _generate_schema(table_name, report_date, run_date):
             log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'")
         else:
             gbq_data_type = gbq_data_type.upper()
-       
+
+        if gbq_data_type in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
+            if gbq_field_mode == "NULLABLE":
+                method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` = ''," \
+                            + f" NULL, CAST(PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type}))"
+            else:
+                method = f"CAST (PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type})"
+        else:
+            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type})"
+
+        query = f"{query}\t{method} AS `{rows.COLUMN_NAME}`,\n"
         schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type, "mode":gbq_field_mode })
-        query = f"{query}\tCAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type}) AS `{rows.COLUMN_NAME}`,\n"
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
@@ -209,7 +218,7 @@ with DAG(
     # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 3, 30),
     catchup=False,
-    tags=['convz', 'production', 'migration', 'daily', 'tms'],
+    tags=['convz', 'production', 'migrate', 'daily_data', 'tms', 'mario'],
     render_template_as_native_obj=True,
     default_args={
         'retries': 1,
@@ -267,6 +276,13 @@ with DAG(
         deserialize_json=True
     )
     # iterable_tables_list = [ "tbclustermappingdm" ]
+    # iterable_tables_list = [
+    #     "tbclustermappingdm",
+    #     "tbschedulemaster",
+    #     "tbservicemaster",
+    #     "tms_tbfpdetail",
+    #     "tms_tbfphead"
+    # ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
