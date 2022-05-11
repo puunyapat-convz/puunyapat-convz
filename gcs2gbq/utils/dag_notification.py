@@ -94,7 +94,7 @@ OFM alert: *Control file* with prefix {filename} do not exist on GCS
 
 def ofm_missing_intraday_file_slack_alert(context):
     slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
-    
+
     ti = context.get('task_instance')
     ts = context.get('ts')
     table_name = '_'.join(ti.task_id.split('_')[2:])
@@ -104,7 +104,6 @@ def ofm_missing_intraday_file_slack_alert(context):
     gcs_prefix = gcs_list[-1]
 
     slack_msg = """
-*** Test message, please ignore ***
 OFM alert: *Intraday data files* with prefix `{gcs_prefix}` has lower count than expected ({file_count})
 >Dag: {dag}
 >Task: {task}
