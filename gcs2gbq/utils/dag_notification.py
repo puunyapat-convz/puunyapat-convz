@@ -6,7 +6,7 @@ SLACK_OFM_ALERT_CONN = 'slack_ofm_alert_conn'
 def ofm_task_fail_slack_alert(context):
     slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
     ti = context.get('task_instance')
-    
+
     slack_msg = """
 OFM alert: *Task Failed*
 >DAG: {dag} 
@@ -30,6 +30,7 @@ OFM alert: *Task Failed*
 
 def ofm_missing_daily_file_slack_alert(context):
     slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
+
     ti = context.get('task_instance')
     ts = context.get('ts')
     table_name = '_'.join(ti.task_id.split('_')[2:])
@@ -93,21 +94,28 @@ OFM alert: *Control file* with prefix {filename} do not exist on GCS
 
 def ofm_missing_intraday_file_slack_alert(context):
     slack_webhook_token  = BaseHook.get_connection(SLACK_OFM_ALERT_CONN).password
+    
     ti = context.get('task_instance')
     ts = context.get('ts')
-    # table_name = ti.task_id.split('_')[-1]
-    # gcs_list = ti.xcom_pull(key='gcs_uri', task_ids=f'check_tm1_list_{table_name}').split('/')
+    table_name = '_'.join(ti.task_id.split('_')[2:])
+
+    file_count = ti.xcom_pull(key='filecount', task_ids=f'count_file_{table_name}')
+    gcs_list   = ti.xcom_pull(key='gcs_uri', task_ids=f'count_file_{table_name}').split('/')
+    gcs_prefix = gcs_list[-1]
 
     slack_msg = """
-OFM alert: Task Failed. 
->Dag: {dag} 
->Task: {task}  
->Execution Time: {exec_date}  
->Log Url: {log_url} 
+*** Test message, please ignore ***
+OFM alert: *Intraday data files* with prefix `{gcs_prefix}` has lower count than expected ({file_count})
+>Dag: {dag}
+>Task: {task}
+>GCS URI: {gcs_path}
+>Execution Time: {exec_date}
             """.format(
-                task = ti.task_id,
+                gcs_prefix = gcs_prefix,
+                file_count = file_count,
                 dag  = ti.dag_id,
-                log_url   = ti.log_url,
+                task = ti.task_id,
+                gcs_path = '/'.join(gcs_list[0:-1]),
                 exec_date = ts
             )
 
