@@ -15,7 +15,7 @@ MAIN_PATH = path + "/../data"
 
 BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = [ "ERP", "MDS", "officemate", "Mercury", "TMS", "E-Procurement" ] 
-SOURCE_TYPE  = { "daily" : "| egrep -iv '^$|^erp_|^mercury_'", "intraday": "" }
+SOURCE_TYPE  = { "daily" : "| egrep -iv '^$|^erp_|^mercury_'", "intraday": "", "historical": "" }
 
 ###############################
 
@@ -38,7 +38,7 @@ with DAG(
     schedule_interval=None,
     start_date=dt.datetime(2022, 4, 15),
     catchup=False,
-    tags=['convz_prod_airflow_style']
+    tags=['convz', 'production', 'mario', 'variables'],
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -51,7 +51,7 @@ with DAG(
                 task_id  = f"get_{NAME}_{TYPE}",
                 cwd      = MAIN_PATH,
                 bash_command = f"gsutil ls gs://{BUCKET_NAME}/{NAME}/{TYPE}" \
-                                + f" | cut -d'/' -f6 {SOURCE_TYPE.get(TYPE)} > {NAME}_{TYPE}_folders;" \
+                                + f" | cut -d'/' -f6 | grep -v '^$' {SOURCE_TYPE.get(TYPE)} > {NAME}_{TYPE}_folders;" \
                                 + f" echo {MAIN_PATH}/{NAME}_{TYPE}_folders"
             )
 
