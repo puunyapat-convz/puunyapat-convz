@@ -115,7 +115,7 @@ with DAG(
                                     "destinationTable": {
                                         "projectId": PROJECT_DST,
                                         "datasetId": DATASET_DST,
-                                        "tableId": f'{tm1_table.lower()}_test${{{{ ti.xcom_pull(task_ids="gen_date_{tm1_table}_{interval}").replace("-","") }}}}',
+                                        "tableId": f'{tm1_table.lower()}${{{{ ti.xcom_pull(task_ids="gen_date_{tm1_table}_{interval}").replace("-","") }}}}',
                                     },
                                     "createDisposition": "CREATE_IF_NEEDED",
                                     "writeDisposition": "WRITE_TRUNCATE",
