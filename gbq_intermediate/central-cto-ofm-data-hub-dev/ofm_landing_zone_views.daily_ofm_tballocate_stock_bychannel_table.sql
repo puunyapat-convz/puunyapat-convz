@@ -6,7 +6,7 @@ WITH
     ORDER BY
       update_date DESC ) AS rnk
   FROM
-    {source_table}
+    central-cto-ofm-data-hub-dev.officemate_source.daily_ofm_tballocate_stock_bychannel
   WHERE
     report_date <= "CURRENT_DATE" )
 SELECT
