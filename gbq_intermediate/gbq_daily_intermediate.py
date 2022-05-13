@@ -38,17 +38,17 @@ def _gen_date(ds, offset):
 
 with DAG(
     dag_id="gbq_daily_intermediate",
-    schedule_interval=None,
-    # schedule_interval="30 05 * * *",
+    # schedule_interval=None,
+    schedule_interval="30 05 * * *",
     start_date=dt.datetime(2022, 5, 11),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_view', 'intermediate'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'on_failure_callback': ofm_task_fail_slack_alert,
-    #     'retries': 0
-    # }
+    default_args={
+        'on_failure_callback': ofm_task_fail_slack_alert,
+        'retries': 0
+    }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
