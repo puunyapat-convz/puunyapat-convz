@@ -106,7 +106,7 @@ with DAG(
                         prefix_group_id=False,
                     ) as load_interval_tasks_group:
 
-                        range = [0,1] if source == "POS" else [0]
+                        range = [1] if source == "POS" else [0]
 
                         for interval in range:
 
