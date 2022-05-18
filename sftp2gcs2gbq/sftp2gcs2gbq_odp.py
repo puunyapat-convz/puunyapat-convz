@@ -14,9 +14,8 @@ from airflow.providers.google.cloud.transfers.gcs_to_sftp     import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
-import pathlib
+import fnmatch
 import logging
-import json
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
@@ -28,19 +27,20 @@ BUCKET_TYPE = "prod"
 
 MAIN_FOLDER = "ODP"
 SUB_FOLDER  = ["JDA", "POS"]
+FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset).replace("-","")
 
 def _list_file(subfolder, tablename):
     hook = SFTPHook(ssh_conn_id="sftp-odp-connection")
-    return hook.list_directory(f"/{subfolder}/outbound/{tablename}/archive/")
+    return hook.list_directory(f"/{subfolder}/outbound/{tablename}/archive")
 
 def _filter_file(ti, branch_id, date_str, sftp_list):
     file_prefix = ""
 
     for file in sftp_list:
-        if str(date_str) in file:
+        if str(date_str) in file and file == f".{FILE_EXT.get(source)}":
             file_prefix = '_'.join(file.split('_')[:2]) + f'_{date_str}*'
             break
 
@@ -52,10 +52,10 @@ def _filter_file(ti, branch_id, date_str, sftp_list):
 
 with DAG(
     dag_id="sftp2gcs2gbq_odp",
-    schedule_interval=None,
-    # schedule_interval="20 01 * * *",
-    start_date=dt.datetime(2022, 5, 12),
-    catchup=False,
+    # schedule_interval=None,
+    schedule_interval="10 00 * * *",
+    start_date=dt.datetime(2022, 5, 17),
+    catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'odp'],
     render_template_as_native_obj=True,
@@ -74,8 +74,8 @@ with DAG(
     #     deserialize_json=True
     # )
     iterable_sources_list = {
-      'ODP_JDA': ["BCH_JDA_DataPlatform_APADDR"],
-      'ODP_POS': ["POS_DataPlatform_Master_Discount"]
+    #   'ODP_JDA': ["BCH_JDA_DataPlatform_APADDR"],
+      'ODP_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
      }
 
     with TaskGroup(
@@ -95,7 +95,7 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
-                    TABLE_ID = f'test_{table.lower()}_daily_source'
+                    TABLE_ID = f'test_{table}_daily_source'
 
                     list_file = PythonOperator(
                         task_id=f'list_file_{table}',
@@ -106,6 +106,8 @@ with DAG(
                         }
                     )
 
+                    PREFIX = "JDA_" if source == "JDA" else ""
+
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{table}",
                         google_cloud_storage_conn_id = "convz_dev_service_account",
@@ -113,7 +115,7 @@ with DAG(
                         project_id = PROJECT_ID,
                         dataset_id = DATASET_ID,
                         table_id = TABLE_ID,
-                        gcs_schema_object = f"gs://{BUCKET_NAME}/schemas/{source}/{table.replace('_DataPlatform','')}.schema",
+                        gcs_schema_object = f"gs://{BUCKET_NAME}/schema/{source}/{PREFIX}{table.replace('_DataPlatform','')}.schema",
                         time_partitioning = { "type": "DAY" },
                     )
 
@@ -154,7 +156,7 @@ with DAG(
                                 destination_path = f"{MAIN_FOLDER}/{source}/test_{table}", 
                                 gcp_conn_id = 'convz_dev_service_account', 
                                 sftp_conn_id = 'sftp-odp-connection',
-                                move_object = True, ## Set to True when testing is done
+                                move_object = False, ## Set as True when testing is done
                             )
 
                             archive_file = GCSToSFTPOperator(
@@ -173,11 +175,11 @@ with DAG(
                                 gcp_conn_id = "convz_dev_service_account",
                                 configuration = {
                                     "load": {
-                                        "sourceUris": [ f'{MAIN_FOLDER}/{source}/test_{table}/{{{{ ti.xcom_pull(key = "sftp_prefix", task_ids="filter_file_{table}_{interval}") }}}}' ],
+                                        "sourceUris": [ f'gs://{BUCKET_NAME}/{MAIN_FOLDER}/{source}/test_{table}/{{{{ ti.xcom_pull(key = "sftp_prefix", task_ids="filter_file_{table}_{interval}") }}}}.{FILE_EXT.get(source)}' ],
                                         "destinationTable": {
                                             "projectId": PROJECT_ID,
                                             "datasetId": DATASET_ID,
-                                            "tableId  ": f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}'
+                                            "tableId"  : f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}'
                                         },
                                         "sourceFormat"   : "CSV",
                                         "fieldDelimiter" : "|",
