@@ -14,6 +14,7 @@ from airflow.providers.google.cloud.transfers.gcs_to_sftp     import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
+import pathlib
 import fnmatch
 import logging
 
@@ -30,32 +31,41 @@ SUB_FOLDER  = ["JDA", "POS"]
 FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 
 def _gen_date(ds, offset):
-    return ds_add(ds, offset).replace("-","")
+    return ds_add(ds, offset)
 
-def _list_file(subfolder, tablename):
+def _filter_file(ti, subfolder, tablename, branch_id, date_str):
     hook = SFTPHook(ssh_conn_id="sftp-odp-connection")
-    return hook.list_directory(f"/{subfolder}/outbound/{tablename}/archive")
+    sftp_list   = []
+    
+    remote_path = f"/{subfolder}/outbound/{tablename}/archive/"
+    local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}/"
 
-def _filter_file(ti, branch_id, date_str, sftp_list):
-    file_prefix = ""
+    extension   = FILE_EXT.get(subfolder)
+    pattern     = f"*{date_str.replace('-','')}*.{extension}"
 
-    for file in sftp_list:
-        if str(date_str) in file and file == f".{FILE_EXT.get(source)}":
-            file_prefix = '_'.join(file.split('_')[:2]) + f'_{date_str}*'
-            break
+    pathlib.Path(local_path).mkdir(parents=True, exist_ok=True)
+    log.info(f"Local path: [{local_path}]")
+    log.info(f"Filename criteria: [{pattern}]")
+    
+    for filename in hook.list_directory(remote_path):
+        if fnmatch.fnmatch(filename, pattern):
+            new_name = filename.replace(f'.{extension}', f'_{date_str}.{extension}')
+            log.info(f"Retrieving file: [{new_name}]...")
+            hook.retrieve_file(remote_path + filename, local_path + new_name)
+            sftp_list.append(new_name)
 
-    if file_prefix:
-        ti.xcom_push(key='sftp_prefix', value=file_prefix)
+    if sftp_list:
+        ti.xcom_push(key='upload_path', value=local_path)
         return f"save_gcs_{branch_id}"
     else:
         return f"skip_table_{branch_id}"
 
 with DAG(
     dag_id="sftp2gcs2gbq_odp",
-    # schedule_interval=None,
-    schedule_interval="10 00 * * *",
+    schedule_interval=None,
+    # schedule_interval="10 00 * * *",
     start_date=dt.datetime(2022, 5, 17),
-    catchup=True,
+    catchup=False,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'odp'],
     render_template_as_native_obj=True,
@@ -74,7 +84,7 @@ with DAG(
     #     deserialize_json=True
     # )
     iterable_sources_list = {
-    #   'ODP_JDA': ["BCH_JDA_DataPlatform_APADDR"],
+      'ODP_JDA': ["BCH_JDA_DataPlatform_APADDR"],
       'ODP_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
      }
 
@@ -96,17 +106,7 @@ with DAG(
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
                     TABLE_ID = f'test_{table}_daily_source'
-
-                    list_file = PythonOperator(
-                        task_id=f'list_file_{table}',
-                        python_callable=_list_file,
-                        op_kwargs = {
-                            'subfolder': source,
-                            'tablename': table
-                        }
-                    )
-
-                    PREFIX = "JDA_" if source == "JDA" else ""
+                    PREFIX   = "JDA_" if source == "JDA" else ""
 
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{table}",
@@ -141,60 +141,62 @@ with DAG(
                                 task_id=f'filter_file_{table}_{interval}',
                                 python_callable=_filter_file,
                                 op_kwargs = {
+                                    'subfolder': source,
+                                    'tablename': table,
                                     'branch_id': f'{table}_{interval}',
                                     'date_str' : f'{{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}',
-                                    'sftp_list': f'{{{{ ti.xcom_pull(task_ids="list_file_{table}") }}}}'
                                 }
                             )
 
                             skip_table = DummyOperator(task_id = f"skip_table_{table}_{interval}")
+                            save_gcs   = DummyOperator(task_id = f"save_gcs_{table}_{interval}")
 
-                            save_gcs = SFTPToGCSOperator(
-                                task_id = f"save_gcs_{table}_{interval}",
-                                source_path = f'/{source}/outbound/{table}/archive/{{{{ ti.xcom_pull(key = "sftp_prefix", task_ids="filter_file_{table}_{interval}") }}}}', 
-                                destination_bucket = BUCKET_NAME, 
-                                destination_path = f"{MAIN_FOLDER}/{source}/test_{table}", 
-                                gcp_conn_id = 'convz_dev_service_account', 
-                                sftp_conn_id = 'sftp-odp-connection',
-                                move_object = False, ## Set as True when testing is done
-                            )
+                            # save_gcs = SFTPToGCSOperator(
+                            #     task_id = f"save_gcs_{table}_{interval}",
+                            #     source_path = f'/{source}/outbound/{table}/archive/{{{{ ti.xcom_pull(key = "upload_path", task_ids="filter_file_{table}_{interval}") }}}}', 
+                            #     destination_bucket = BUCKET_NAME, 
+                            #     destination_path = f"{MAIN_FOLDER}/{source}/test_{table}", 
+                            #     gcp_conn_id = 'convz_dev_service_account', 
+                            #     sftp_conn_id = 'sftp-odp-connection',
+                            #     move_object = False, ## Set as True when testing is done
+                            # )
 
-                            archive_file = GCSToSFTPOperator(
-                                task_id = f"archive_file_{table}_{interval}",
-                                source_bucket = BUCKET_NAME, 
-                                source_object = f'{MAIN_FOLDER}/{source}/test_{table}/{{{{ ti.xcom_pull(key = "sftp_prefix", task_ids="filter_file_{table}_{interval}") }}}}', 
-                                destination_path = f'/{source}/outbound/{table}/archive/',
-                                keep_directory_structure = False,
-                                gcp_conn_id = 'convz_dev_service_account', 
-                                sftp_conn_id = 'sftp-odp-connection',
-                                move_object = False,
-                            )
+                            # archive_file = GCSToSFTPOperator(
+                            #     task_id = f"archive_file_{table}_{interval}",
+                            #     source_bucket = BUCKET_NAME, 
+                            #     source_object = f'{MAIN_FOLDER}/{source}/test_{table}/{{{{ ti.xcom_pull(key = "upload_path", task_ids="filter_file_{table}_{interval}") }}}}', 
+                            #     destination_path = f'/{source}/outbound/{table}/archive/',
+                            #     keep_directory_structure = False,
+                            #     gcp_conn_id = 'convz_dev_service_account', 
+                            #     sftp_conn_id = 'sftp-odp-connection',
+                            #     move_object = False,
+                            # )
 
-                            load_gbq = BigQueryInsertJobOperator( 
-                                task_id = f"load_gbq_{table}_{interval}",
-                                gcp_conn_id = "convz_dev_service_account",
-                                configuration = {
-                                    "load": {
-                                        "sourceUris": [ f'gs://{BUCKET_NAME}/{MAIN_FOLDER}/{source}/test_{table}/{{{{ ti.xcom_pull(key = "sftp_prefix", task_ids="filter_file_{table}_{interval}") }}}}.{FILE_EXT.get(source)}' ],
-                                        "destinationTable": {
-                                            "projectId": PROJECT_ID,
-                                            "datasetId": DATASET_ID,
-                                            "tableId"  : f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}'
-                                        },
-                                        "sourceFormat"   : "CSV",
-                                        "fieldDelimiter" : "|",
-                                        "skipLeadingRows": 1,
-                                        "timePartitioning" : { "type": "DAY" },
-                                        "createDisposition": "CREATE_IF_NEEDED",
-                                        "writeDisposition" : "WRITE_TRUNCATE"
-                                    }
-                                }
-                            )
+                            # load_gbq = BigQueryInsertJobOperator( 
+                            #     task_id = f"load_gbq_{table}_{interval}",
+                            #     gcp_conn_id = "convz_dev_service_account",
+                            #     configuration = {
+                            #         "load": {
+                            #             "sourceUris": [ f'gs://{BUCKET_NAME}/{MAIN_FOLDER}/{source}/test_{table}/{{{{ ti.xcom_pull(key = "upload_path", task_ids="filter_file_{table}_{interval}") }}}}.{FILE_EXT.get(source)}' ],
+                            #             "destinationTable": {
+                            #                 "projectId": PROJECT_ID,
+                            #                 "datasetId": DATASET_ID,
+                            #                 "tableId"  : f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}'
+                            #             },
+                            #             "sourceFormat"   : "CSV",
+                            #             "fieldDelimiter" : "|",
+                            #             "skipLeadingRows": 1,
+                            #             "timePartitioning" : { "type": "DAY" },
+                            #             "createDisposition": "CREATE_IF_NEEDED",
+                            #             "writeDisposition" : "WRITE_TRUNCATE"
+                            #         }
+                            #     }
+                            # )
 
                             gen_date >> filter_file >> [ skip_table, save_gcs ] 
-                            save_gcs >> [ archive_file, load_gbq ]
+                            # save_gcs >> [ archive_file, load_gbq ]
 
-                    list_file >> create_table >> load_interval_tasks_group
+                    create_table >> load_interval_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
 
