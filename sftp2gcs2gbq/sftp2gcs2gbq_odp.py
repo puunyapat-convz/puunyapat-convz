@@ -18,6 +18,8 @@ import pathlib
 import fnmatch
 import logging
 
+######### VARIABLES ###########
+
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
@@ -29,6 +31,12 @@ BUCKET_TYPE = "prod"
 MAIN_FOLDER = "ODP"
 SUB_FOLDER  = ["JDA", "POS"]
 FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
+
+###############################
+
+def _list_file(subfolder, tablename):
+    hook = SFTPHook(ssh_conn_id="sftp-odp-connection")
+    return hook.list_directory(f"/{subfolder}/outbound/{tablename}/archive/")
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset)
