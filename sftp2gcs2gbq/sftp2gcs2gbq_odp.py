@@ -9,7 +9,6 @@ from utils.dag_notification    import *
 
 from airflow.providers.sftp.hooks.sftp                        import *
 from airflow.providers.google.cloud.operators.bigquery        import *
-from airflow.providers.google.cloud.operators.gcs             import *
 from airflow.providers.google.cloud.transfers.sftp_to_gcs     import *
 from airflow.providers.google.cloud.transfers.gcs_to_sftp     import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
@@ -23,9 +22,12 @@ log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 
+PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
+SOURCE_TYPE = "daily"
+BUCKET_TYPE = "prod"
+
 MAIN_FOLDER = "ODP"
 SUB_FOLDER  = ["JDA", "POS"]
-BUCKET_TYPE = "prod"
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset).replace("-","")
@@ -84,6 +86,7 @@ with DAG(
         for source in SUB_FOLDER:
 
             BUCKET_NAME = f"sftp-ofm-{source.lower()}-{BUCKET_TYPE}"
+            DATASET_ID  = f"{source.lower()}_ofm_daily_source"
 
             with TaskGroup(
                 f'load_{source}_tasks_group',
@@ -92,6 +95,8 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
+                    TABLE_ID = f'test_{table.lower()}_daily_source'
+
                     list_file = PythonOperator(
                         task_id=f'list_file_{table}',
                         python_callable=_list_file,
@@ -99,6 +104,17 @@ with DAG(
                             'subfolder': source,
                             'tablename': table
                         }
+                    )
+
+                    create_table = BigQueryCreateEmptyTableOperator(
+                        task_id = f"create_table_{table}",
+                        google_cloud_storage_conn_id = "convz_dev_service_account",
+                        bigquery_conn_id = "convz_dev_service_account",
+                        project_id = PROJECT_ID,
+                        dataset_id = DATASET_ID,
+                        table_id = TABLE_ID,
+                        gcs_schema_object = f"gs://{BUCKET_NAME}/schemas/{source}/{table.replace('_DataPlatform','')}.schema",
+                        time_partitioning = { "type": "DAY" },
                     )
 
                     with TaskGroup(
@@ -152,10 +168,31 @@ with DAG(
                                 move_object = False,
                             )
 
-                            gen_date >> filter_file >> [ skip_table, save_gcs ] 
-                            save_gcs >> archive_file
+                            load_gbq = BigQueryInsertJobOperator( 
+                                task_id = f"load_gbq_{table}_{interval}",
+                                gcp_conn_id = "convz_dev_service_account",
+                                configuration = {
+                                    "load": {
+                                        "sourceUris": [ f'{MAIN_FOLDER}/{source}/test_{table}/{{{{ ti.xcom_pull(key = "sftp_prefix", task_ids="filter_file_{table}_{interval}") }}}}' ],
+                                        "destinationTable": {
+                                            "projectId": PROJECT_ID,
+                                            "datasetId": DATASET_ID,
+                                            "tableId  ": f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}'
+                                        },
+                                        "sourceFormat"   : "CSV",
+                                        "fieldDelimiter" : "|",
+                                        "skipLeadingRows": 1,
+                                        "timePartitioning" : { "type": "DAY" },
+                                        "createDisposition": "CREATE_IF_NEEDED",
+                                        "writeDisposition" : "WRITE_TRUNCATE"
+                                    }
+                                }
+                            )
 
-                    list_file >> load_interval_tasks_group
+                            gen_date >> filter_file >> [ skip_table, save_gcs ] 
+                            save_gcs >> [ archive_file, load_gbq ]
+
+                    list_file >> create_table >> load_interval_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
 
