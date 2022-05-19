@@ -13,6 +13,7 @@ from airflow.providers.google.cloud.transfers.local_to_gcs    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
+import shutil
 import pathlib
 import fnmatch
 import logging
@@ -42,20 +43,22 @@ def _gen_date(ds, offset):
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
     remote_path = f"/{subfolder}/outbound/{tablename}/archive/"
-    local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}/"
+    local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(subfolder)
     pattern   = f"*{date_str.replace('-','')}*.{extension}"
     matched   = []
 
     pathlib.Path(local_path).mkdir(parents=True, exist_ok=True)
+    log.info(f"Remote path and file criteria: [{remote_path}{pattern}]")
     log.info(f"Local path: [{local_path}]")
-    log.info(f"Filename criteria: [{pattern}]")
     
     for filename in sftp_list:
         if fnmatch.fnmatch(filename, pattern):
             log.info(f"Retrieving file: [{filename}]...")
             new_name = filename.replace(f'.{extension}', f'_{date_str}.{extension}')
+
+            ## download file from SFTP and save as new_name
             SFTP_HOOK.retrieve_file(remote_path + filename, local_path + new_name)
             matched.append(local_path + new_name)
 
@@ -66,17 +69,28 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
         return f"skip_table_{branch_id}"
 
 def _archive_sftp(subfolder, tablename, date_str, file_list):
-    remote_path = f"/{subfolder}/outbound/{tablename}/archive/"
-    extension   = FILE_EXT.get(subfolder)
-   
+    local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
+    remote_path  = f"/{subfolder}/outbound/{tablename}/"
+    archive_path = f"/{subfolder}/outbound/{tablename}/archive/"
+    extension    = FILE_EXT.get(subfolder)
+
+    log.info(f"Local path: [{local_path}]")
+    log.info(f"SFTP archive path: [{archive_path}]")
+
     for filename in file_list:
         new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')
-        log.info(f"Archiving local file [{filename.replace(MAIN_PATH,'')}] to remote [{remote_path + new_name}]...")
-        SFTP_HOOK.store_file(remote_path + new_name, filename)
 
-    ## to do
-    ## remove local temp file
-    ## remove sftp file on source path after move it to archive
+        ## upload local file to SFTP archive directory
+        log.info(f"Archiving local file: [{filename.split('/')[-1]}] to SFTP ...")
+        SFTP_HOOK.store_file(archive_path + new_name, filename)
+
+        ## remove sftp file on source path after move it to archive
+        log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
+        # SFTP_HOOK.delete_file(remote_path + new_name)
+
+    ## remove local temp directory
+    log.info(f"Removing local directory: [{local_path}] ...")
+    shutil.rmtree(local_path)
 
 with DAG(
     dag_id="sftp2gcs2gbq_odp",
@@ -96,15 +110,15 @@ with DAG(
     start_task = DummyOperator(task_id = "start_task")
     end_task   = DummyOperator(task_id = "end_task")
 
-    # iterable_sources_list = Variable.get(
-    #     key=f'sftp_folders',
-    #     default_var=['default_table'],
-    #     deserialize_json=True
-    # )
-    iterable_sources_list = {
-      'ODP_JDA': ["BCH_JDA_DataPlatform_APADDR"],
-      'ODP_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
-     }
+    iterable_sources_list = Variable.get(
+        key=f'sftp_folders',
+        default_var=['default_table'],
+        deserialize_json=True
+    )
+    # iterable_sources_list = {
+    #   'ODP_JDA': ["BCH_JDA_DataPlatform_APADDR"],
+    #   'ODP_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
+    #  }
 
     with TaskGroup(
         f'load_{MAIN_FOLDER}_tasks_group',
@@ -123,7 +137,7 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
-                    TABLE_ID = f'test_{table}_daily_source'
+                    TABLE_ID = f'test_{table}'
                     PREFIX   = "JDA_" if source == "JDA" else ""
 
                     create_table = BigQueryCreateEmptyTableOperator(
@@ -184,7 +198,6 @@ with DAG(
                                 src = f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{table}_{interval}") }}}}',
                                 dst = f"{MAIN_FOLDER}/{source}/test_{table}/",
                                 bucket = BUCKET_NAME
-
                             )
 
                             archive_sftp = PythonOperator(
