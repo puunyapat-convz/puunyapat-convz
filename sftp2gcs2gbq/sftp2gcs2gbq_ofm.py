@@ -13,17 +13,15 @@ from airflow.providers.google.cloud.transfers.local_to_gcs    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
-import shutil
-import pathlib
-import fnmatch
-import logging
+import shutil, pathlib, fnmatch
+import logging, random, time
 
 ######### VARIABLES ###########
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
-SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection")
+SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=30.0)
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
@@ -66,16 +64,22 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
         ti.xcom_push(key='upload_list', value=matched)
         return f"save_gcs_{branch_id}"
     else:
+        shutil.rmtree(local_path)
         return f"skip_table_{branch_id}"
 
 def _archive_sftp(subfolder, tablename, date_str, file_list):
     local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
     remote_path  = f"/{subfolder}/outbound/{tablename}/"
     archive_path = f"/{subfolder}/outbound/{tablename}/archive/"
-    extension    = FILE_EXT.get(subfolder)
+
+    extension = FILE_EXT.get(subfolder)
+    sleep     = round(random.uniform(0,5), 3)
 
     log.info(f"Local path: [{local_path}]")
     log.info(f"SFTP archive path: [{archive_path}]")
+
+    log.info(f"Delay {sleep} second to prevent SFTP connections overload ...")
+    time.sleep(sleep)
 
     for filename in file_list:
         new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')
@@ -93,10 +97,10 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
     shutil.rmtree(local_path)
 
 with DAG(
-    dag_id="sftp2gcs2gbq_odp",
+    dag_id="sftp2gcs2gbq_ofm",
     # schedule_interval=None,
-    schedule_interval="10 00 * * *",
-    start_date=dt.datetime(2022, 5, 17),
+    schedule_interval="00 04 * * *",
+    start_date=dt.datetime(2022, 5, 18),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'odp'],
