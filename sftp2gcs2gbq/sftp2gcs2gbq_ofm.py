@@ -71,25 +71,26 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
     local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
     remote_path  = f"/{subfolder}/outbound/{tablename}/"
     archive_path = f"/{subfolder}/outbound/{tablename}/archive/"
-
-    extension = FILE_EXT.get(subfolder)
-    sleep     = round(random.uniform(0,5), 3)
+    extension    = FILE_EXT.get(subfolder)
 
     log.info(f"Local path: [{local_path}]")
     log.info(f"SFTP archive path: [{archive_path}]")
 
-    log.info(f"Delay {sleep} second to prevent SFTP connections overload ...")
-    time.sleep(sleep)
-
     for filename in file_list:
         new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')
 
+       ## delay 0-1 second to avoid SFTP overload
+        sleep = round(random.uniform(0,1), 3)
+        time.sleep(sleep)
         ## upload local file to SFTP archive directory
-        log.info(f"Archiving local file: [{filename.split('/')[-1]}] to SFTP ...")
+        log.info(f"Archiving local file: [{filename.split('/')[-1]}] to SFTP, delay: {sleep} sec ...")
         SFTP_HOOK.store_file(archive_path + new_name, filename)
 
+        ## delay 0-1 second to avoid SFTP overload
+        sleep = round(random.uniform(0,1), 3)
+        time.sleep(sleep)
         ## remove sftp file on source path after move it to archive
-        log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
+        log.info(f"Removing SFTP file: [{remote_path + new_name}], delay: {sleep} sec ...")
         # SFTP_HOOK.delete_file(remote_path + new_name)
 
     ## remove local temp directory
