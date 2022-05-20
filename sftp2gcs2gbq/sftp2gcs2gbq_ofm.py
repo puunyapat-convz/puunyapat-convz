@@ -100,7 +100,7 @@ with DAG(
     dag_id="sftp2gcs2gbq_ofm",
     # schedule_interval=None,
     schedule_interval="00 04 * * *",
-    start_date=dt.datetime(2022, 5, 18),
+    start_date=dt.datetime(2022, 5, 19),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'odp'],
