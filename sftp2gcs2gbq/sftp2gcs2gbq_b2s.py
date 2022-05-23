@@ -100,8 +100,8 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_b2s",
     # schedule_interval=None,
-    schedule_interval="00 04 * * *",
-    start_date=dt.datetime(2022, 5, 19),
+    schedule_interval="20 04 * * *",
+    start_date=dt.datetime(2022, 5, 20),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'b2s'],
@@ -115,15 +115,15 @@ with DAG(
     start_task = DummyOperator(task_id = "start_task")
     end_task   = DummyOperator(task_id = "end_task")
 
-    # iterable_sources_list = Variable.get(
-    #     key=f'sftp_folders',
-    #     default_var=['default_table'],
-    #     deserialize_json=True
-    # )
-    iterable_sources_list = {
-      'B2S_JDA': ["BCH_JDA_DataPlatform_APADDR"],
-      'B2S_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
-     }
+    iterable_sources_list = Variable.get(
+        key=f'sftp_folders',
+        default_var=['default_table'],
+        deserialize_json=True
+    )
+    # iterable_sources_list = {
+    #   'B2S_JDA': ["BCH_JDA_DataPlatform_APADDR"],
+    #   'B2S_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
+    #  }
 
     with TaskGroup(
         f'load_{MAIN_FOLDER}_tasks_group',
@@ -178,7 +178,7 @@ with DAG(
                                 task_id=f"gen_date_{table}_{interval}",
                                 python_callable=_gen_date,
                                 op_kwargs = {
-                                    "ds"    : '{{ ds }}',
+                                    "ds"    : '{{ data_interval_end }}',
                                     "offset": -interval
                                 }
                             )

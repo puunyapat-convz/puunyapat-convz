@@ -178,7 +178,7 @@ with DAG(
                                 task_id=f"gen_date_{table}_{interval}",
                                 python_callable=_gen_date,
                                 op_kwargs = {
-                                    "ds"    : '{{ ds }}',
+                                    "ds"    : '{{ data_interval_end }}',
                                     "offset": -interval
                                 }
                             )
