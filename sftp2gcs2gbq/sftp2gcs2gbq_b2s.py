@@ -60,6 +60,9 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
             SFTP_HOOK.retrieve_file(remote_path + filename, local_path + new_name)
             matched.append(local_path + new_name)
 
+    ## close session to prevent SFTP overload
+    SFTP_HOOK.close_conn()
+
     if matched:
         ti.xcom_push(key='upload_list', value=matched)
         return f"save_gcs_{branch_id}"
@@ -92,6 +95,9 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
         ## remove sftp file on source path after move it to archive
         log.info(f"Removing SFTP file: [{remote_path + new_name}], delay: {sleep} sec ...")
         # SFTP_HOOK.delete_file(remote_path + new_name)
+
+    ## close session to prevent SFTP overload
+    SFTP_HOOK.close_conn()
 
     ## remove local temp directory
     log.info(f"Removing local directory: [{local_path}] ...")
