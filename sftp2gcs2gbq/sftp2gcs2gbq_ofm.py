@@ -60,6 +60,9 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
             SFTP_HOOK.retrieve_file(remote_path + filename, local_path + new_name)
             matched.append(local_path + new_name)
 
+    ## close session to prevent SFTP overload
+    SFTP_HOOK.close_conn()
+
     if matched:
         ti.xcom_push(key='upload_list', value=matched)
         return f"save_gcs_{branch_id}"
@@ -79,19 +82,16 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
     for filename in file_list:
         new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')
 
-       ## delay 0-1 second to avoid SFTP overload
-        sleep = round(random.uniform(0,1), 3)
-        time.sleep(sleep)
         ## upload local file to SFTP archive directory
-        log.info(f"Archiving local file: [{filename.split('/')[-1]}] to SFTP, delay: {sleep} sec ...")
+        log.info(f"Archiving local file: [{filename.split('/')[-1]}] to SFTP ...")
         SFTP_HOOK.store_file(archive_path + new_name, filename)
 
-        ## delay 0-1 second to avoid SFTP overload
-        sleep = round(random.uniform(0,1), 3)
-        time.sleep(sleep)
         ## remove sftp file on source path after move it to archive
-        log.info(f"Removing SFTP file: [{remote_path + new_name}], delay: {sleep} sec ...")
+        log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
         # SFTP_HOOK.delete_file(remote_path + new_name)
+
+    ## close session to prevent SFTP overload
+    SFTP_HOOK.close_conn()
 
     ## remove local temp directory
     log.info(f"Removing local directory: [{local_path}] ...")
@@ -178,7 +178,7 @@ with DAG(
                                 task_id=f"gen_date_{table}_{interval}",
                                 python_callable=_gen_date,
                                 op_kwargs = {
-                                    "ds"    : '{{ data_interval_end }}',
+                                    "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
                                     "offset": -interval
                                 }
                             )
