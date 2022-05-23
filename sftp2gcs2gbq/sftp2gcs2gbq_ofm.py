@@ -1,6 +1,5 @@
 from airflow                   import configuration, DAG
 from airflow.operators.python  import PythonOperator, BranchPythonOperator
-from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
@@ -13,8 +12,7 @@ from airflow.providers.google.cloud.transfers.local_to_gcs    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
-import shutil, pathlib, fnmatch
-import logging, random, time
+import shutil, pathlib, fnmatch, logging
 
 ######### VARIABLES ###########
 
