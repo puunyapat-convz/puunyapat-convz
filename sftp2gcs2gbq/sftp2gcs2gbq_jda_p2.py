@@ -97,7 +97,7 @@ def _archive_sftp(mainfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_jda_p2",
     # schedule_interval=None,
-    schedule_interval="00 04 * * *",
+    schedule_interval="50 03 * * *",
     start_date=dt.datetime(2022, 5, 22),
     catchup=True,
     max_active_runs=1,
@@ -172,76 +172,79 @@ with DAG(
                         prefix_group_id=False,
                     ) as load_interval_tasks_group:
 
-                        range = [0,1] if source == "JDA" else [1]
+                        for interval in [0,1]:
 
-                        for interval in range:
+                            with TaskGroup(
+                                f'load_{source}_{table}_{interval}_tasks_group',
+                                prefix_group_id=False,
+                            ) as load_subinterval_tasks_group:
 
-                            gen_date = PythonOperator(
-                                task_id=f"gen_date_{source}_{table}_{interval}",
-                                python_callable=_gen_date,
-                                op_kwargs = {
-                                    "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
-                                    "offset": -interval
-                                }
-                            )
-
-                            get_sftp = BranchPythonOperator(
-                                task_id=f'get_sftp_{source}_{table}_{interval}',
-                                python_callable=_get_sftp,
-                                op_kwargs = {
-                                    'mainfolder': source,
-                                    'tablename' : table,
-                                    'branch_id' : f'{source}_{table}_{interval}',
-                                    'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
-                                    'sftp_list' : f'{{{{ ti.xcom_pull(task_ids="list_file_{source}_{table}") }}}}'
-                                }
-                            )
-
-                            skip_table = DummyOperator(task_id = f"skip_table_{source}_{table}_{interval}")
-
-                            save_gcs   = LocalFilesystemToGCSOperator(
-                                task_id = f"save_gcs_{source}_{table}_{interval}",
-                                gcp_conn_id ='convz_dev_service_account',
-                                src = f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{source}_{table}_{interval}") }}}}',
-                                dst = f"{SUB_FOLDER}/test_{table}/",
-                                bucket = BUCKET_NAME
-                            )
-
-                            archive_sftp = PythonOperator(
-                                task_id=f'archive_sftp_{source}_{table}_{interval}',
-                                python_callable=_archive_sftp,
-                                op_kwargs = {
-                                    'mainfolder': source,
-                                    'tablename' : table,
-                                    'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
-                                    'file_list' : f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{source}_{table}_{interval}") }}}}'
-                                }
-                            )
-
-                            load_gbq = BigQueryInsertJobOperator( 
-                                task_id = f"load_gbq_{source}_{table}_{interval}",
-                                gcp_conn_id = "convz_dev_service_account",
-                                configuration = {
-                                    "load": {
-                                        "sourceUris": [ f'gs://{BUCKET_NAME}/{SUB_FOLDER}/{TABLE_ID}/*'
-                                                            + f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}.{FILE_EXT.get(SUB_FOLDER)}' ],
-                                        "destinationTable": {
-                                            "projectId": PROJECT_ID,
-                                            "datasetId": DATASET_ID,
-                                            "tableId"  : f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}").replace("-","") }}}}'
-                                        },
-                                        "sourceFormat"   : "CSV",
-                                        "fieldDelimiter" : "|",
-                                        "skipLeadingRows": 1,
-                                        "timePartitioning" : { "type": "DAY" },
-                                        "createDisposition": "CREATE_IF_NEEDED",
-                                        "writeDisposition" : "WRITE_TRUNCATE"
+                                gen_date = PythonOperator(
+                                    task_id=f"gen_date_{source}_{table}_{interval}",
+                                    python_callable=_gen_date,
+                                    op_kwargs = {
+                                        "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
+                                        "offset": -interval
                                     }
-                                }
-                            )
+                                )
 
-                            gen_date >> get_sftp >> [ skip_table, save_gcs ]
-                            save_gcs >> [ archive_sftp, load_gbq ]
+                                get_sftp = BranchPythonOperator(
+                                    task_id=f'get_sftp_{source}_{table}_{interval}',
+                                    python_callable=_get_sftp,
+                                    op_kwargs = {
+                                        'mainfolder': source,
+                                        'tablename' : table,
+                                        'branch_id' : f'{source}_{table}_{interval}',
+                                        'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
+                                        'sftp_list' : f'{{{{ ti.xcom_pull(task_ids="list_file_{source}_{table}") }}}}'
+                                    }
+                                )
+
+                                skip_table = DummyOperator(task_id = f"skip_table_{source}_{table}_{interval}")
+
+                                save_gcs   = LocalFilesystemToGCSOperator(
+                                    task_id = f"save_gcs_{source}_{table}_{interval}",
+                                    gcp_conn_id ='convz_dev_service_account',
+                                    src = f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{source}_{table}_{interval}") }}}}',
+                                    dst = f"{SUB_FOLDER}/test_{table}/",
+                                    bucket = BUCKET_NAME
+                                )
+
+                                archive_sftp = PythonOperator(
+                                    task_id=f'archive_sftp_{source}_{table}_{interval}',
+                                    python_callable=_archive_sftp,
+                                    op_kwargs = {
+                                        'mainfolder': source,
+                                        'tablename' : table,
+                                        'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
+                                        'file_list' : f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{source}_{table}_{interval}") }}}}'
+                                    }
+                                )
+
+                                load_gbq = BigQueryInsertJobOperator( 
+                                    task_id = f"load_gbq_{source}_{table}_{interval}",
+                                    gcp_conn_id = "convz_dev_service_account",
+                                    configuration = {
+                                        "load": {
+                                            "sourceUris": [ f'gs://{BUCKET_NAME}/{SUB_FOLDER}/{TABLE_ID}/*'
+                                                                + f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}.{FILE_EXT.get(SUB_FOLDER)}' ],
+                                            "destinationTable": {
+                                                "projectId": PROJECT_ID,
+                                                "datasetId": DATASET_ID,
+                                                "tableId"  : f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}").replace("-","") }}}}'
+                                            },
+                                            "sourceFormat"   : "CSV",
+                                            "fieldDelimiter" : "|",
+                                            "skipLeadingRows": 1,
+                                            "timePartitioning" : { "type": "DAY" },
+                                            "createDisposition": "CREATE_IF_NEEDED",
+                                            "writeDisposition" : "WRITE_TRUNCATE"
+                                        }
+                                    }
+                                )
+
+                                gen_date >> get_sftp >> [ skip_table, save_gcs ]
+                                save_gcs >> [ archive_sftp, load_gbq ]
 
                     [ create_table, list_file ] >> load_interval_tasks_group
 
