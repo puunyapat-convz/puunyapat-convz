@@ -30,13 +30,14 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 
 ###############################
 
-def _list_file(subfolder, tablename):
+def _list_file(hookname, subfolder, tablename):
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
     return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/archive/")
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset)
 
-def _get_sftp(ti, mainfolder, tablename, branch_id, date_str, sftp_list):
+def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_list):
     remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/archive/"
     local_path  = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/{tablename}_{date_str}/"
 
@@ -48,6 +49,8 @@ def _get_sftp(ti, mainfolder, tablename, branch_id, date_str, sftp_list):
     log.info(f"Remote path and file criteria: [{remote_path}{pattern}]")
     log.info(f"Local path: [{local_path}]")
     
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
+
     for filename in sftp_list:
         if fnmatch.fnmatch(filename, pattern):
             log.info(f"Retrieving file: [{filename}]...")
@@ -67,7 +70,7 @@ def _get_sftp(ti, mainfolder, tablename, branch_id, date_str, sftp_list):
         shutil.rmtree(local_path)
         return f"skip_table_{branch_id}"
 
-def _archive_sftp(mainfolder, tablename, date_str, file_list):
+def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
     local_path   = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/{tablename}_{date_str}/"
     remote_path  = f"/{SUB_FOLDER}/outbound/{tablename}/"
     archive_path = f"/{SUB_FOLDER}/outbound/{tablename}/archive/"
@@ -75,6 +78,8 @@ def _archive_sftp(mainfolder, tablename, date_str, file_list):
 
     log.info(f"Local path: [{local_path}]")
     log.info(f"SFTP archive path: [{archive_path}]")
+
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
 
     for filename in file_list:
         new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')
@@ -129,14 +134,14 @@ with DAG(
 
         for source in MAIN_FOLDER:
 
+            start_source = DummyOperator(task_id = f"start_{source}")
+
             if source == "ODP": source = "OFM"
 
             BUCKET_NAME = f"sftp-phase2-jda-{source.lower()}-{BUCKET_TYPE}"
             DATASET_ID  = f"phase2_jda_{source.lower()}_daily_source"
 
             if source == "OFM": source = "ODP"
-
-            SFTP_HOOK   = SFTPHook(ssh_conn_id=f"sftp-{source.lower()}-connection", banner_timeout=30.0)
 
             with TaskGroup(
                 f'load_{source}_tasks_group',
@@ -162,6 +167,7 @@ with DAG(
                         task_id=f'list_file_{source}_{table}',
                         python_callable=_list_file,
                         op_kwargs = {
+                            'hookname' : f"sftp-{source.lower()}-connection",
                             'subfolder': SUB_FOLDER,
                             'tablename': table
                         }
@@ -192,6 +198,7 @@ with DAG(
                                     task_id=f'get_sftp_{source}_{table}_{interval}',
                                     python_callable=_get_sftp,
                                     op_kwargs = {
+                                        'hookname' : f"sftp-{source.lower()}-connection",
                                         'mainfolder': source,
                                         'tablename' : table,
                                         'branch_id' : f'{source}_{table}_{interval}',
@@ -214,6 +221,7 @@ with DAG(
                                     task_id=f'archive_sftp_{source}_{table}_{interval}',
                                     python_callable=_archive_sftp,
                                     op_kwargs = {
+                                        'hookname' : f"sftp-{source.lower()}-connection",
                                         'mainfolder': source,
                                         'tablename' : table,
                                         'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
@@ -226,7 +234,7 @@ with DAG(
                                     gcp_conn_id = "convz_dev_service_account",
                                     configuration = {
                                         "load": {
-                                            "sourceUris": [ f'gs://{BUCKET_NAME}/{SUB_FOLDER}/{TABLE_ID}/*'
+                                            "sourceUris": [ f'gs://{BUCKET_NAME}/{SUB_FOLDER}/{TABLE_ID}/{source}*'
                                                                 + f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}.{FILE_EXT.get(SUB_FOLDER)}' ],
                                             "destinationTable": {
                                                 "projectId": PROJECT_ID,
@@ -246,7 +254,7 @@ with DAG(
                                 gen_date >> get_sftp >> [ skip_table, save_gcs ]
                                 save_gcs >> [ archive_sftp, load_gbq ]
 
-                    [ create_table, list_file ] >> load_interval_tasks_group
+                    start_source >> [ create_table, list_file ] >> load_interval_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
 
