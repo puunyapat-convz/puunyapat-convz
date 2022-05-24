@@ -220,7 +220,8 @@ with DAG(
                                 configuration = {
                                     "load": {
                                         "sourceUris": [ f'gs://{BUCKET_NAME}/{MAIN_FOLDER}/{source}/{TABLE_ID}/*'
-                                                            + f'{{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}.{FILE_EXT.get(source)}' ],                                        "destinationTable": {
+                                                            + f'{{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}") }}}}.{FILE_EXT.get(source)}' ],
+                                        "destinationTable": {
                                             "projectId": PROJECT_ID,
                                             "datasetId": DATASET_ID,
                                             "tableId"  : f'{TABLE_ID}${{{{ ti.xcom_pull(task_ids="gen_date_{table}_{interval}").replace("-","") }}}}'
