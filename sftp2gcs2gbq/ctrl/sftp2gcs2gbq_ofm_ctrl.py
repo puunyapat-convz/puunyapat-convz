@@ -51,13 +51,13 @@ SCHEMA    = {
 ###############################
 
 def _list_file(subfolder, tablename):
-    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/archive/")
+    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset)
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
-    remote_path = f"/{subfolder}/outbound/{tablename}/archive/"
+    remote_path = f"/{subfolder}/outbound/{tablename}/"
     local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/ctrl/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(subfolder)
@@ -105,7 +105,7 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 
         ## remove sftp file on source path after move it to archive
         log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
-        # SFTP_HOOK.delete_file(remote_path + new_name)
+        SFTP_HOOK.delete_file(remote_path + new_name)
 
     ## close session to prevent SFTP overload
     SFTP_HOOK.close_conn()
@@ -159,7 +159,7 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
-                    TABLE_ID = f'test_{table}'
+                    TABLE_ID = f'{table}'
 
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{table}",
@@ -217,7 +217,7 @@ with DAG(
                                 task_id = f"save_gcs_{table}_{interval}",
                                 gcp_conn_id ='convz_dev_service_account',
                                 src = f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{table}_{interval}") }}}}',
-                                dst = f"{MAIN_FOLDER}/{source}/test_{table}/",
+                                dst = f"{MAIN_FOLDER}/{source}/{TABLE_ID}/",
                                 bucket = BUCKET_NAME
                             )
 

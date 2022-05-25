@@ -51,13 +51,13 @@ SCHEMA    = {
 
 def _list_file(hookname, subfolder, tablename):
     SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
-    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/archive/")
+    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset)
 
 def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_list):
-    remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/archive/"
+    remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/"
     local_path  = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/ctrl/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(SUB_FOLDER)
@@ -109,7 +109,7 @@ def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
 
         ## remove sftp file on source path after move it to archive
         log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
-        # SFTP_HOOK.delete_file(remote_path + new_name)
+        SFTP_HOOK.delete_file(remote_path + new_name)
 
     ## close session to prevent SFTP overload
     SFTP_HOOK.close_conn()
@@ -169,7 +169,7 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{source}_{SUB_FOLDER}_2"):
 
-                    TABLE_ID = f'test_{table}'
+                    TABLE_ID = f'{table}'
 
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{source}_{table}",
@@ -232,7 +232,7 @@ with DAG(
                                     task_id = f"save_gcs_{source}_{table}_{interval}",
                                     gcp_conn_id ='convz_dev_service_account',
                                     src = f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{source}_{table}_{interval}") }}}}',
-                                    dst = f"{SUB_FOLDER}/test_{table}/",
+                                    dst = f"{SUB_FOLDER}/{TABLE_ID}/",
                                     bucket = BUCKET_NAME
                                 )
 
