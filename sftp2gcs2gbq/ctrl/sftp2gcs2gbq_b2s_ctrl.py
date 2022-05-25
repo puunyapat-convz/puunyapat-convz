@@ -138,8 +138,8 @@ with DAG(
         deserialize_json=True
     )
     # iterable_sources_list = {
-    #   'ODP_JDA': ["BCH_JDA_DataPlatform_APADDR"],
-    #   'ODP_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
+    #   'B2S_JDA': ["BCH_JDA_DataPlatform_APADDR"],
+    #   'B2S_POS': ["POS_DataPlatform_Txn_DiscountCoupon"]
     #  }
 
     with TaskGroup(
@@ -149,8 +149,8 @@ with DAG(
 
         for source in SUB_FOLDER:
 
-            BUCKET_NAME = f"sftp-ofm-{source.lower()}-{BUCKET_TYPE}"
-            DATASET_ID  = f"{source.lower()}_ofm_daily_ctrlfiles"
+            BUCKET_NAME = f"sftp-{MAIN_FOLDER.lower()}-{source.lower()}-{BUCKET_TYPE}"
+            DATASET_ID  = f"{source.lower()}_{MAIN_FOLDER.lower()}_daily_ctrlfiles"
 
             with TaskGroup(
                 f'load_{source}_tasks_group',
