@@ -32,14 +32,14 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 ###############################
 
 def _list_file(subfolder, tablename):
-    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/archive/")
+    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset)
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
-    remote_path = f"/{subfolder}/outbound/{tablename}/archive/"
-    local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
+    remote_path = f"/{subfolder}/outbound/{tablename}/"
+    local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/data/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(subfolder)
     pattern   = f"*{date_str.replace('-','')}*.{extension}"
@@ -69,7 +69,7 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
         return f"skip_table_{branch_id}"
 
 def _archive_sftp(subfolder, tablename, date_str, file_list):
-    local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
+    local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/data/{tablename}_{date_str}/"
     remote_path  = f"/{subfolder}/outbound/{tablename}/"
     archive_path = f"/{subfolder}/outbound/{tablename}/archive/"
     extension    = FILE_EXT.get(subfolder)
@@ -86,7 +86,7 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 
         ## remove sftp file on source path after move it to archive
         log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
-        # SFTP_HOOK.delete_file(remote_path + new_name)
+        SFTP_HOOK.delete_file(remote_path + new_name)
 
     ## close session to prevent SFTP overload
     SFTP_HOOK.close_conn()
@@ -98,7 +98,7 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_ofm",
     # schedule_interval=None,
-    schedule_interval="00 04 * * *",
+    schedule_interval="30 00 * * *",
     start_date=dt.datetime(2022, 5, 19),
     catchup=True,
     max_active_runs=1,
@@ -140,7 +140,7 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
-                    TABLE_ID = f'test_{table}'
+                    TABLE_ID = f'{table}'
                     PREFIX   = "JDA_" if source == "JDA" else ""
 
                     create_table = BigQueryCreateEmptyTableOperator(
@@ -199,7 +199,7 @@ with DAG(
                                 task_id = f"save_gcs_{table}_{interval}",
                                 gcp_conn_id ='convz_dev_service_account',
                                 src = f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{table}_{interval}") }}}}',
-                                dst = f"{MAIN_FOLDER}/{source}/test_{table}/",
+                                dst = f"{MAIN_FOLDER}/{source}/{TABLE_ID}/",
                                 bucket = BUCKET_NAME
                             )
 

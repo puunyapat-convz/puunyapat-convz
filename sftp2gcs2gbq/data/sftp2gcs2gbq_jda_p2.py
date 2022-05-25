@@ -32,14 +32,14 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 
 def _list_file(hookname, subfolder, tablename):
     SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
-    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/archive/")
+    return SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset)
 
 def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_list):
-    remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/archive/"
-    local_path  = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/{tablename}_{date_str}/"
+    remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/"
+    local_path  = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/data/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(SUB_FOLDER)
     pattern   = f"*{date_str.replace('-','')}*.{extension}"
@@ -71,7 +71,7 @@ def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_lis
         return f"skip_table_{branch_id}"
 
 def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
-    local_path   = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/{tablename}_{date_str}/"
+    local_path   = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/data/{tablename}_{date_str}/"
     remote_path  = f"/{SUB_FOLDER}/outbound/{tablename}/"
     archive_path = f"/{SUB_FOLDER}/outbound/{tablename}/archive/"
     extension    = FILE_EXT.get(SUB_FOLDER)
@@ -90,7 +90,7 @@ def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
 
         ## remove sftp file on source path after move it to archive
         log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
-        # SFTP_HOOK.delete_file(remote_path + new_name)
+        SFTP_HOOK.delete_file(remote_path + new_name)
 
     ## close session to prevent SFTP overload
     SFTP_HOOK.close_conn()
@@ -102,7 +102,7 @@ def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_jda_p2",
     # schedule_interval=None,
-    schedule_interval="50 03 * * *",
+    schedule_interval="50 00 * * *",
     start_date=dt.datetime(2022, 5, 22),
     catchup=True,
     max_active_runs=1,
@@ -150,7 +150,7 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{source}_{SUB_FOLDER}_2"):
 
-                    TABLE_ID = f'test_{table}'
+                    TABLE_ID = f'{table}'
 
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{source}_{table}",
@@ -198,7 +198,7 @@ with DAG(
                                     task_id=f'get_sftp_{source}_{table}_{interval}',
                                     python_callable=_get_sftp,
                                     op_kwargs = {
-                                        'hookname' : f"sftp-{source.lower()}-connection",
+                                        'hookname'  : f"sftp-{source.lower()}-connection",
                                         'mainfolder': source,
                                         'tablename' : table,
                                         'branch_id' : f'{source}_{table}_{interval}',
@@ -213,7 +213,7 @@ with DAG(
                                     task_id = f"save_gcs_{source}_{table}_{interval}",
                                     gcp_conn_id ='convz_dev_service_account',
                                     src = f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{source}_{table}_{interval}") }}}}',
-                                    dst = f"{SUB_FOLDER}/test_{table}/",
+                                    dst = f"{SUB_FOLDER}/{TABLE_ID}/",
                                     bucket = BUCKET_NAME
                                 )
 
