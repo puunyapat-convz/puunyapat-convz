@@ -246,7 +246,8 @@ with DAG(
                                             "skipLeadingRows": 1,
                                             "timePartitioning" : { "type": "DAY" },
                                             "createDisposition": "CREATE_IF_NEEDED",
-                                            "writeDisposition" : "WRITE_TRUNCATE"
+                                            "writeDisposition" : "WRITE_TRUNCATE",
+                                            "allowQuotedNewlines": True
                                         }
                                     }
                                 )
