@@ -4,6 +4,7 @@ from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 from airflow.macros            import *
+from marshmallow import Schema
 from utils.dag_notification    import *
 
 from airflow.providers.sftp.hooks.sftp                        import *
@@ -27,7 +28,26 @@ BUCKET_TYPE = "prod"
 
 MAIN_FOLDER = "ODP"
 SUB_FOLDER  = ["JDA", "POS"]
-FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
+
+FILE_EXT  = { "JDA": "ctrl", "POS": "LOG" }
+SCHEMA    = {
+                "POS": 
+                [
+                    {"name":"FileCreateDate", "type":"INTEGER", "mode":"NULLABLE"},
+                    {"name":"FileCreateTime", "type":"INTEGER", "mode":"NULLABLE"},
+                    {"name":"DataRowCount",   "type":"INTEGER", "mode":"NULLABLE"}
+                ],
+                "JDA" : 
+                [
+                    {"name":"IntefaceName", "type":"STRING", "mode":"NULLABLE"},
+                    {"name":"BuCode",       "type":"STRING", "mode":"NULLABLE"},
+                    {"name":"FileCount",    "type":"STRING", "mode":"NULLABLE"},
+                    {"name":"TotalRec",     "type":"STRING", "mode":"NULLABLE"},
+                    {"name":"BatchDate",    "type":"STRING", "mode":"NULLABLE"},
+                    {"name":"Requester",    "type":"STRING", "mode":"NULLABLE"},
+                    {"name":"DIHBatchID",   "type":"STRING", "mode":"NULLABLE"}
+                ]
+            }
 
 ###############################
 
@@ -39,7 +59,7 @@ def _gen_date(ds, offset):
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
     remote_path = f"/{subfolder}/outbound/{tablename}/archive/"
-    local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
+    local_path  = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/ctrl/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(subfolder)
     pattern   = f"*{date_str.replace('-','')}*.{extension}"
@@ -69,7 +89,7 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
         return f"skip_table_{branch_id}"
 
 def _archive_sftp(subfolder, tablename, date_str, file_list):
-    local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/{tablename}_{date_str}/"
+    local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/ctrl/{tablename}_{date_str}/"
     remote_path  = f"/{subfolder}/outbound/{tablename}/"
     archive_path = f"/{subfolder}/outbound/{tablename}/archive/"
     extension    = FILE_EXT.get(subfolder)
@@ -98,8 +118,8 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_ofm_ctrl",
     # schedule_interval=None,
-    schedule_interval="00 04 * * *",
-    start_date=dt.datetime(2022, 5, 19),
+    schedule_interval="00 05 * * *",
+    start_date=dt.datetime(2022, 5,24),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_ctrl', 'sftp', 'ofm'],
@@ -131,7 +151,7 @@ with DAG(
         for source in SUB_FOLDER:
 
             BUCKET_NAME = f"sftp-ofm-{source.lower()}-{BUCKET_TYPE}"
-            DATASET_ID  = f"{source.lower()}_ofm_daily_source"
+            DATASET_ID  = f"{source.lower()}_ofm_daily_ctrlfiles"
 
             with TaskGroup(
                 f'load_{source}_tasks_group',
@@ -141,7 +161,6 @@ with DAG(
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
                     TABLE_ID = f'test_{table}'
-                    PREFIX   = "JDA_" if source == "JDA" else ""
 
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{table}",
@@ -150,7 +169,7 @@ with DAG(
                         project_id = PROJECT_ID,
                         dataset_id = DATASET_ID,
                         table_id = TABLE_ID,
-                        gcs_schema_object = f"gs://{BUCKET_NAME}/schema/{source}/{PREFIX}{table.replace('_DataPlatform','')}.schema",
+                        schema_fields = SCHEMA.get(source),
                         time_partitioning = { "type": "DAY" },
                     )
 
@@ -231,8 +250,7 @@ with DAG(
                                         "skipLeadingRows": 1,
                                         "timePartitioning" : { "type": "DAY" },
                                         "createDisposition": "CREATE_IF_NEEDED",
-                                        "writeDisposition" : "WRITE_TRUNCATE",
-                                        "allowQuotedNewlines": True
+                                        "writeDisposition" : "WRITE_TRUNCATE"
                                     }
                                 }
                             )
