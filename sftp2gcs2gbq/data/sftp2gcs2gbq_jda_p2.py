@@ -26,7 +26,7 @@ BUCKET_TYPE = "prod"
 
 MAIN_FOLDER = ["ODP", "B2S"]
 SUB_FOLDER  = "JDA"
-FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
+FILE_EXT    = { "JDA": "dat", "POS": "TXT" }
 
 ###############################
 
@@ -138,8 +138,8 @@ with DAG(
 
             if source == "ODP": source = "OFM"
 
-            BUCKET_NAME = f"sftp-phase2-jda-{source.lower()}-{BUCKET_TYPE}"
-            DATASET_ID  = f"phase2_jda_{source.lower()}_daily_source"
+            BUCKET_NAME = f"sftp-phase2-jda-{source.lower()}-{BUCKET_TYPE}" 
+            DATASET_ID  = f"jda_{source.lower()}_daily_source"
 
             if source == "OFM": source = "ODP"
 

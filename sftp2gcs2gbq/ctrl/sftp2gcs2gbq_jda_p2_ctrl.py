@@ -160,7 +160,7 @@ with DAG(
             if source == "ODP": source = "OFM"
 
             BUCKET_NAME = f"sftp-phase2-jda-{source.lower()}-{BUCKET_TYPE}"
-            DATASET_ID  = f"phase2_jda_{source.lower()}_daily_ctrlfiles"
+            DATASET_ID  = f"jda_{source.lower()}_daily_ctrlfiles"
 
             if source == "OFM": source = "ODP"
 
