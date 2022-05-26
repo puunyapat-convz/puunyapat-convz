@@ -136,7 +136,7 @@ with DAG(
     # end_date=dt.datetime(2022, 5, 24),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'production', 'mario', 'daily_ctrl', 'sftp', 'pos_p2', 'adhoc'],
+    tags=['convz', 'production', 'mario', 'daily_ctrl', 'sftp', 'pos', 'adhoc'],
     render_template_as_native_obj=True,
     # default_args={
     #     'on_failure_callback': ofm_task_fail_slack_alert,
