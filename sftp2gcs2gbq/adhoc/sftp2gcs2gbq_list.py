@@ -1,9 +1,10 @@
 from airflow                   import configuration, DAG
 from airflow.operators.python  import PythonOperator
 from airflow.operators.dummy   import DummyOperator
+from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 
-from airflow.providers.sftp.hooks.sftp                        import *
+from airflow.providers.sftp.hooks.sftp  import *
 
 import datetime as dt
 import logging
@@ -30,7 +31,7 @@ def _list_file(hookname, mainfolder, subfolder, tablename):
     return file_list
 
 with DAG(
-    dag_id="sftp2gcs2gbq_POS_Txn_Translator_list",
+    dag_id="sftp2gcs2gbq_list",
     schedule_interval=None,
     # schedule_interval="50 00 * * *",
     start_date=dt.datetime(2022, 5, 25),
@@ -47,15 +48,15 @@ with DAG(
     start_task = DummyOperator(task_id = "start_task")
     end_task   = DummyOperator(task_id = "end_task")
 
-    # iterable_sources_list = Variable.get(
-    #     key=f'sftp_folders',
-    #     default_var=['default_table'],
-    #     deserialize_json=True
-    # )
-    iterable_sources_list = {
-      "ODP_POS_2": ["POS_DataPlatform_Txn_Translator"],
-      "B2S_POS_2": ["POS_DataPlatform_Txn_Translator"]
-    }
+    iterable_sources_list = Variable.get(
+        key=f'sftp_folders',
+        default_var=['default_table'],
+        deserialize_json=True
+    )
+    # iterable_sources_list = {
+    #   "ODP_POS": ["POS_DataPlatform_Txn_Translator"],
+    #   "B2S_POS": ["POS_DataPlatform_Txn_Translator"]
+    # }
 
     with TaskGroup(
         f'load_{SUB_FOLDER}_tasks_group',
@@ -78,7 +79,7 @@ with DAG(
                 prefix_group_id=False,
             ) as load_tables_tasks_group:
 
-                for table in iterable_sources_list.get(f"{source}_{SUB_FOLDER}_2"):
+                for table in iterable_sources_list.get(f"{source}_{SUB_FOLDER}"):
 
                     TABLE_ID = f'{table}'
 
