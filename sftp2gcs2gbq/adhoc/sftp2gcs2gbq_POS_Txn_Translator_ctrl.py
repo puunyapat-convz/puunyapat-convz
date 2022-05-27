@@ -4,7 +4,7 @@ from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 from airflow.macros            import *
-from utils.dag_notification    import *
+# from utils.dag_notification    import *
 
 from airflow.providers.sftp.hooks.sftp                        import *
 from airflow.providers.google.cloud.operators.bigquery        import *
