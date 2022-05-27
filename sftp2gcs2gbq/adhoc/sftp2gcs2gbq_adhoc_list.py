@@ -31,7 +31,7 @@ def _list_file(hookname, mainfolder, subfolder, tablename):
     return file_list
 
 with DAG(
-    dag_id="sftp2gcs2gbq_list",
+    dag_id="sftp2gcs2gbq_adhoc_list",
     schedule_interval=None,
     # schedule_interval="50 00 * * *",
     start_date=dt.datetime(2022, 5, 25),
