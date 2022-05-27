@@ -19,13 +19,13 @@ import shutil, pathlib, fnmatch, logging
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
-SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=30.0)
+SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0)
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
 BUCKET_TYPE = "prod"
 
-MAIN_FOLDER = "ODP"
+MAIN_FOLDER = "B2S"
 SUB_FOLDER  = ["POS"]
 # SUB_FOLDER  = ["JDA", "POS"]
 FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
@@ -97,14 +97,14 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
     shutil.rmtree(local_path)
 
 with DAG(
-    dag_id="sftp2gcs2gbq_adhoc_ofm",
-    schedule_interval=None,
-    # schedule_interval="30 00 * * *",
-    start_date=dt.datetime(2022, 4, 17),
-    end_date=dt.datetime(2022, 4, 18),
+    dag_id="sftp2gcs2gbq_adhoc_data",
+    # schedule_interval=None,
+    schedule_interval="30 00 * * *",
+    start_date=dt.datetime(2022, 5, 7),
+    end_date=dt.datetime(2022, 5, 8),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'ofm', 'adhoc'],
+    tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'adhoc'],
     render_template_as_native_obj=True,
     # default_args={
     #     'on_failure_callback': ofm_task_fail_slack_alert,
@@ -121,13 +121,13 @@ with DAG(
         deserialize_json=True
     )
     iterable_sources_list = {
-        'ODP_POS': [
-            "ODP_POS_DataPlatform_Txn_DiscountCoupon",
-            "ODP_POS_DataPlatform_Txn_Sales",
-            "ODP_POS_DataPlatform_Txn_Payment",
-            "ODP_POS_DataPlatform_Txn_Installment"
+        'B2S_POS': [
+            "POS_DataPlatform_Txn_DiscountCoupon",
+            "POS_DataPlatform_Txn_Sales",
+            "POS_DataPlatform_Txn_Payment",
+            "POS_DataPlatform_Txn_Installment"
         ]
-     }
+    }
 
     with TaskGroup(
         f'load_{MAIN_FOLDER}_tasks_group',
