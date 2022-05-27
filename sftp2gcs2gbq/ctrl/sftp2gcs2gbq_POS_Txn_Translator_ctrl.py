@@ -49,28 +49,22 @@ SCHEMA    = {
 
 ###############################
 
-# def _list_file(hookname, subfolder, tablename):
-#     SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
-#     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
-#     SFTP_HOOK.close_conn()
-#     return file_list
+def _list_file(hookname, subfolder, tablename):
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
+    file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
+    SFTP_HOOK.close_conn()
+    return file_list
 
 def _gen_date(ds, offset):
     return ds_add(ds, offset)
 
-def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str):
+def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_list):
     remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/"
     local_path  = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/ctrl/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(SUB_FOLDER)
     pattern   = f"*{date_str.replace('-','')}*.{extension}"
     matched   = []
-
-    sftp_list = Variable.get(
-        key=f"{mainfolder}_{table}",
-        # default_var=['default_table'],
-        deserialize_json=True
-    )
 
     pathlib.Path(local_path).mkdir(parents=True, exist_ok=True)
     log.info(f"Remote path and file criteria: [{remote_path}{pattern}]")
@@ -132,8 +126,8 @@ with DAG(
     dag_id="sftp2gcs2gbq_pos_txn_translator_ctrl",
     # schedule_interval=None,
     schedule_interval="50 00 * * *",
-    start_date=dt.datetime(2022, 4, 25),
-    # end_date=dt.datetime(2022, 5, 24),
+    start_date=dt.datetime(2022, 4, 17),
+    end_date=dt.datetime(2022, 4, 18),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_ctrl', 'sftp', 'pos', 'adhoc'],
@@ -193,15 +187,15 @@ with DAG(
                         time_partitioning = { "type": "DAY" },
                     )
 
-                    # list_file = PythonOperator(
-                    #     task_id=f'list_file_{source}_{table}',
-                    #     python_callable=_list_file,
-                    #     op_kwargs = {
-                    #         'hookname' : f"sftp-{source.lower()}-connection",
-                    #         'subfolder': SUB_FOLDER,
-                    #         'tablename': table
-                    #     }
-                    # )
+                    list_file = PythonOperator(
+                        task_id=f'list_file_{source}_{table}',
+                        python_callable=_list_file,
+                        op_kwargs = {
+                            'hookname' : f"sftp-{source.lower()}-connection",
+                            'subfolder': SUB_FOLDER,
+                            'tablename': table
+                        }
+                    )
 
                     with TaskGroup(
                         f'load_{source}_{table}_tasks_group',
@@ -233,7 +227,7 @@ with DAG(
                                         'tablename' : table,
                                         'branch_id' : f'{source}_{table}_{interval}',
                                         'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
-                                        # 'sftp_list' : f'{{{{ ti.xcom_pull(task_ids="list_file_{source}_{table}") }}}}'
+                                        'sftp_list' : f'{{{{ ti.xcom_pull(task_ids="list_file_{source}_{table}") }}}}'
                                     }
                                 )
 
@@ -284,7 +278,7 @@ with DAG(
                                 gen_date >> get_sftp >> [ skip_table, save_gcs ]
                                 save_gcs >> [ archive_sftp, load_gbq ]
 
-                    start_source >> create_table >> load_interval_tasks_group
+                    start_source >> create_table >> list_file >> load_interval_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
 
