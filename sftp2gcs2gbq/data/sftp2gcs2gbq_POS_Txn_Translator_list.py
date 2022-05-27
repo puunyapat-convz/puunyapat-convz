@@ -24,7 +24,7 @@ SUB_FOLDER  = "POS"
 ###############################
 
 def _list_file(hookname, mainfolder, subfolder, tablename):
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, keepalive_interval=10)
     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
     SFTP_HOOK.close_conn()
     return file_list
