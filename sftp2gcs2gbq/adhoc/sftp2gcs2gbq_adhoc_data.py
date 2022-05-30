@@ -60,6 +60,7 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
             matched.append(local_path + new_name)
 
     ## close session to prevent SFTP overload
+    log.info(f"Total files: [{len(matched)}]")
     SFTP_HOOK.close_conn()
 
     if matched:
@@ -90,6 +91,7 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
         SFTP_HOOK.delete_file(remote_path + new_name)
 
     ## close session to prevent SFTP overload
+    log.info(f"Total files: [{len(file_list)}]")
     SFTP_HOOK.close_conn()
 
     ## remove local temp directory
@@ -100,8 +102,8 @@ with DAG(
     dag_id="sftp2gcs2gbq_adhoc_data",
     # schedule_interval=None,
     schedule_interval="30 00 * * *",
-    start_date=dt.datetime(2022, 5, 7),
-    end_date=dt.datetime(2022, 5, 8),
+    start_date=dt.datetime(2022, 5, 18),
+    end_date=dt.datetime(2022, 5, 22),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'adhoc'],
