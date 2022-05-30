@@ -1,5 +1,5 @@
 from airflow                   import configuration, DAG
-from airflow.operators.python  import PythonOperator
+from airflow.operators.python  import BranchPythonOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
@@ -24,11 +24,16 @@ SUB_FOLDER  = "POS"
 
 ###############################
 
-def _list_file(hookname, mainfolder, subfolder, tablename):
+def _list_file(ti, hookname, mainfolder, subfolder, tablename):
     SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, keepalive_interval=10)
     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
     SFTP_HOOK.close_conn()
-    return file_list
+
+    if file_list == [ 'archive' ]:
+        return f"empty_{mainfolder}_{tablename}"
+    else:
+        ti.xcom_push(key='stuck_files', value=file_list)
+        return f"stuck_{mainfolder}_{tablename}"
 
 with DAG(
     dag_id="sftp2gcs2gbq_adhoc_list",
@@ -48,15 +53,15 @@ with DAG(
     start_task = DummyOperator(task_id = "start_task")
     end_task   = DummyOperator(task_id = "end_task")
 
-    iterable_sources_list = Variable.get(
-        key=f'sftp_folders',
-        default_var=['default_table'],
-        deserialize_json=True
-    )
-    # iterable_sources_list = {
-    #   "ODP_POS": ["POS_DataPlatform_Txn_Translator"],
-    #   "B2S_POS": ["POS_DataPlatform_Txn_Translator"]
-    # }
+    # iterable_sources_list = Variable.get(
+    #     key=f'sftp_folders',
+    #     default_var=['default_table'],
+    #     deserialize_json=True
+    # )
+    iterable_sources_list = {
+      "ODP_POS": ["POS_DataPlatform_Txn_Translator"],
+      "B2S_POS": ["POS_DataPlatform_Txn_Translator"]
+    }
 
     with TaskGroup(
         f'load_{SUB_FOLDER}_tasks_group',
@@ -83,7 +88,7 @@ with DAG(
 
                     TABLE_ID = f'{table}'
 
-                    list_file = PythonOperator(
+                    list_file = BranchPythonOperator(
                         task_id=f'list_file_{source}_{table}',
                         python_callable=_list_file,
                         op_kwargs = {
@@ -94,6 +99,11 @@ with DAG(
                         }
                     )
 
-                    start_source >> load_tables_tasks_group
+                    empty = DummyOperator(task_id =f"empty_{source}_{table}")
+                    stuck = DummyOperator(task_id =f"stuck_{source}_{table}")
+
+                    list_file >> [ empty, stuck ]
+
+            start_source >> load_tables_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
