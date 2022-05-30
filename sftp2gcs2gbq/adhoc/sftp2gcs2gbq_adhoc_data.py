@@ -102,8 +102,8 @@ with DAG(
     dag_id="sftp2gcs2gbq_adhoc_data",
     # schedule_interval=None,
     schedule_interval="30 00 * * *",
-    start_date=dt.datetime(2022, 5, 18),
-    end_date=dt.datetime(2022, 5, 22),
+    start_date=dt.datetime(2022, 5, 29),
+    end_date=dt.datetime(2022, 5, 30),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'adhoc'],
@@ -117,18 +117,14 @@ with DAG(
     start_task = DummyOperator(task_id = "start_task")
     end_task   = DummyOperator(task_id = "end_task")
 
-    iterable_sources_list = Variable.get(
-        key=f'sftp_folders',
-        default_var=['default_table'],
-        deserialize_json=True
-    )
+    # iterable_sources_list = Variable.get(
+    #     key=f'sftp_folders',
+    #     default_var=['default_table'],
+    #     deserialize_json=True
+    # )
     iterable_sources_list = {
-        'B2S_POS': [
-            "POS_DataPlatform_Txn_DiscountCoupon",
-            "POS_DataPlatform_Txn_Sales",
-            "POS_DataPlatform_Txn_Payment",
-            "POS_DataPlatform_Txn_Installment"
-        ]
+        'B2S_POS': ["POS_DataPlatform_Txn_Translator"],
+        'ODP_POS': ["POS_DataPlatform_Txn_Translator"]
     }
 
     with TaskGroup(

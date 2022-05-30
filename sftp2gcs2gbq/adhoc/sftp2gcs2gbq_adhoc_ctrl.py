@@ -121,16 +121,16 @@ with DAG(
     dag_id="sftp2gcs2gbq_adhoc_ctrl",
     # schedule_interval=None,
     schedule_interval="30 01 * * *",
-    start_date=dt.datetime(2022, 5, 18),
-    end_date=dt.datetime(2022, 5, 22),
+    start_date=dt.datetime(2022, 5, 29),
+    end_date=dt.datetime(2022, 5, 30),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_ctrl', 'sftp', 'ofm', 'adhoc'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -142,12 +142,8 @@ with DAG(
     #     deserialize_json=True
     # )
     iterable_sources_list = {
-        'B2S_POS': [
-            "POS_DataPlatform_Txn_DiscountCoupon",
-            "POS_DataPlatform_Txn_Sales",
-            "POS_DataPlatform_Txn_Payment",
-            "POS_DataPlatform_Txn_Installment"
-        ]
+        'B2S_POS': ["POS_DataPlatform_Txn_Translator"],
+        'ODP_POS': ["POS_DataPlatform_Txn_Translator"]
     }
 
     with TaskGroup(
