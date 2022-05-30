@@ -218,11 +218,11 @@ with DAG(
     # schedule_interval="40 00 * * *",
     start_date=dt.datetime(2022, 3, 30),
     catchup=False,
-    tags=['convz_prod_migration'],
+    tags=['convz', 'production', 'migrate', 'daily_data', 'officemate', 'mario'],
     render_template_as_native_obj=True,
-    default_args={
-        'retries': 1,
-        'retry_delay': dt.timedelta(seconds=5),
+    # default_args={
+    #     'retries': 1,
+    #     'retry_delay': dt.timedelta(seconds=5),
     #     'depends_on_past': False,
     #     'email': ['airflow@example.com'],
     #     'email_on_failure': False,
@@ -239,7 +239,7 @@ with DAG(
     #     'on_retry_callback': another_function,
     #     'sla_miss_callback': yet_another_function,
     #     'trigger_rule': 'all_success'
-    },
+    # },
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -270,12 +270,13 @@ with DAG(
 
     end_task   = DummyOperator(task_id = "end_task")
 
-    iterable_tables_list = Variable.get(
-        key=f'{SOURCE_NAME}_{TYPE_SRC}',
-        default_var=['default_table'],
-        deserialize_json=True
-    )
+    # iterable_tables_list = Variable.get(
+    #     key=f'{SOURCE_NAME}_{TYPE_SRC}',
+    #     default_var=['default_table'],
+    #     deserialize_json=True
+    # )
     # iterable_tables_list = [ "arbatdtl" ]
+    iterable_tables_list = [ "ofm_tbdocument_reserve" ]
 
     with TaskGroup(
         'migrate_historical_tasks_group',
