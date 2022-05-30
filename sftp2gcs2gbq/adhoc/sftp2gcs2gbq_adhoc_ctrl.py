@@ -19,13 +19,13 @@ import shutil, pathlib, fnmatch, logging
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
-SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0)
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
 BUCKET_TYPE = "prod"
 
-MAIN_FOLDER = "B2S"
+SFTP_HOOK   = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=30.0)
+MAIN_FOLDER = "ODP"
 SUB_FOLDER  = ["POS"]
 # SUB_FOLDER  = ["JDA", "POS"]
 
@@ -121,8 +121,8 @@ with DAG(
     dag_id="sftp2gcs2gbq_adhoc_ctrl",
     # schedule_interval=None,
     schedule_interval="30 01 * * *",
-    start_date=dt.datetime(2022, 5, 29),
-    end_date=dt.datetime(2022, 5, 30),
+    start_date=dt.datetime(2022, 5, 26),
+    end_date=dt.datetime(2022, 5, 29),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_ctrl', 'sftp', 'ofm', 'adhoc'],
@@ -153,8 +153,12 @@ with DAG(
 
         for source in SUB_FOLDER:
 
-            BUCKET_NAME = f"sftp-ofm-{source.lower()}-{BUCKET_TYPE}"
-            DATASET_ID  = f"{source.lower()}_ofm_daily_ctrlfiles"
+            if MAIN_FOLDER == "ODP": MAIN_FOLDER = "ofm"
+
+            BUCKET_NAME = f"sftp-{MAIN_FOLDER}-{source.lower()}-{BUCKET_TYPE}"
+            DATASET_ID  = f"{source.lower()}_{MAIN_FOLDER}_daily_ctrlfiles"
+
+            if MAIN_FOLDER == "ofm": MAIN_FOLDER = "ODP"
 
             with TaskGroup(
                 f'load_{source}_tasks_group',
