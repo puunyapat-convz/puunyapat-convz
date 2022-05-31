@@ -82,6 +82,7 @@ def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_lis
             matched.append(local_path + new_name)
 
     ## close session to prevent SFTP overload
+    log.info(f"Total files: [{len(matched)}]")
     SFTP_HOOK.close_conn()
 
     if matched:
@@ -114,6 +115,7 @@ def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
         SFTP_HOOK.delete_file(remote_path + new_name)
 
     ## close session to prevent SFTP overload
+    log.info(f"Total files: [{len(file_list)}]")
     SFTP_HOOK.close_conn()
 
     ## remove local temp directory
