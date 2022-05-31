@@ -24,7 +24,7 @@ PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
 BUCKET_TYPE = "prod"
 
-SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=30.0)
+SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", keepalive_interval=10)
 MAIN_FOLDER = "ODP"
 SUB_FOLDER  = ["POS"]
 # SUB_FOLDER  = ["JDA", "POS"]
