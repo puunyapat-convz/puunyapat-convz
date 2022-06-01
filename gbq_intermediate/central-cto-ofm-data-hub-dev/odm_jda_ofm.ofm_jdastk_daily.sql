@@ -1,0 +1,16 @@
+WITH
+  tmp AS (
+  SELECT
+    *,
+    ROW_NUMBER() OVER (PARTITION BY XSTORE, XSKU ORDER BY EODDAT DESC) AS rnk
+  FROM
+    {source_table}
+  WHERE
+    DATE(_PARTITIONTIME) <= "CURRENT_DATE"
+  )
+SELECT
+  * EXCEPT (rnk)
+FROM
+  tmp
+WHERE
+  rnk =1
