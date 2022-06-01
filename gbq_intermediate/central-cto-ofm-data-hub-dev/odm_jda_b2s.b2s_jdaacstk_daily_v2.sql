@@ -7,7 +7,7 @@ WITH
   FROM
     `central-cto-ofm-data-hub-dev.b2s_jda_prod_new.BCH_JDA_DataPlatform_JDAACSTK`
   WHERE
-    INTRND <= "CURRENT_DATE"
+    PARSE_DATE("%y%m%d", CAST(INTRND AS STRING)) <= "CURRENT_DATE"
   )
 SELECT
   * EXCEPT (rnk,
