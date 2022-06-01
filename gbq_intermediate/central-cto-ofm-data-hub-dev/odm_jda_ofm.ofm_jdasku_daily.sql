@@ -5,6 +5,7 @@ WITH
     ROW_NUMBER() OVER (PARTITION BY INUMBR ORDER BY EODDAT DESC) AS rnk
   FROM
     `central-cto-ofm-data-hub-dev.ofm_jda_prod_new.BCH_JDA_DataPlatform_JDASKU`
+  WHERE
     DATE(_PARTITIONTIME) <= "CURRENT_DATE"
   )
 SELECT
