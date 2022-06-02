@@ -141,7 +141,6 @@ def ofm_stuck_sftp_file_slack_alert(context):
     print(f'source name = {source_name}')
 
     slack_msg = """
-*** Test message, please ignore ***
 OFM alert: Found `{file_count}` *unprocess files* from source `{source}`, table `{table}` on SFTP.
 >DAG: {dag}
 >Task: {task}
