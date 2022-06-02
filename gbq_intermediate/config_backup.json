@@ -14,5 +14,13 @@
     "central-cto-ofm-data-hub-prod.erp_ofm_landing_zone_views.tbrtdelt_product_detail_table"   : 10,
     "central-cto-ofm-data-hub-prod.erp_ofm_landing_zone_views.tbrtvdetail_product_detail_table": 10,
     "central-cto-ofm-data-hub-prod.erp_ofm_landing_zone_views.tbwtdetail_product_detail_table" : 10,
-    "central-cto-ofm-data-hub-prod.erp_ofm_landing_zone_views.tbreceivedetail_product_detail_table": 10
+    "central-cto-ofm-data-hub-prod.erp_ofm_landing_zone_views.tbreceivedetail_product_detail_table": 10,
+
+    
+    "central-cto-ofm-data-hub-dev.data_vs_ctrl_files.jda_b2s": 18,
+    "central-cto-ofm-data-hub-dev.data_vs_ctrl_files.jda_ofm": 18,
+
+    "central-cto-ofm-data-hub-prod.ofm_transport_reporting_views.fact_transport_daily": 61,
+    "central-cto-ofm-data-hub-prod.market_basket_analysis.DIM_PRODUCT_ATTRIBUTE"   : 1,
+    "central-cto-ofm-data-hub-prod.market_basket_analysis.DIM_PRODUCT_ATTRIBUTE_v2": 2
 }
