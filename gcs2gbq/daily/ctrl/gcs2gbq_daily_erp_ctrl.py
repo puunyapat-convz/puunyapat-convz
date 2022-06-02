@@ -92,7 +92,7 @@ with DAG(
         task_id = "create_epoch",
         python_callable = _create_epoch,
         op_kwargs={ 
-            'run_date' : '{{ ds }}' ## use yesterday_ds for manual run
+            'run_date' : '{{ data_interval_end.strftime("%Y-%m-%d") }}' ## epoch in filename is run_date (t-0), use ds for manual run
         },
     )
 
