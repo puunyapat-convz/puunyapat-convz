@@ -25,12 +25,13 @@ BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "gbq_intermediate"
 LOCATION     = "asia-southeast1" 
 
-def _read_query(blobname, run_date):
+def _read_query(blobname):
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(BUCKET_NAME)
     blob   = storage.Blob(blobname, bucket)
-    query  = blob.download_as_bytes().decode()
+    return blob.download_as_bytes().decode()
 
+def _update_query(query, run_date):
     return query.replace("CURRENT_DATE",run_date)
 
 def _gen_date(ds, offset):
@@ -45,10 +46,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'intermediate'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -59,6 +60,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
+    # CONFIG_VALUE = {"central-cto-ofm-data-hub-dev.odm_jda_b2s.b2s_jdasku_daily"   : 10}
 
     iterable_tables_list = CONFIG_VALUE.keys()
 
@@ -68,12 +70,13 @@ with DAG(
     ) as run_table_tasks_group:
 
         if iterable_tables_list:
-            for index, tm1_table in enumerate(iterable_tables_list):
+            for index, table_fqdn in enumerate(iterable_tables_list):
 
-                PROJECT_DST, DATASET_DST = CONFIG_VALUE.get(tm1_table).split(".")
+                PROJECT_DST, DATASET_DST, tm1_table = table_fqdn.split(".")
+                RUN_DATE = CONFIG_VALUE.get(table_fqdn)
 
                 create_ds = BigQueryCreateEmptyDatasetOperator(
-                    task_id     = f"create_ds_{tm1_table}",
+                    task_id     = f"create_ds_{DATASET_DST}.{tm1_table}",
                     project_id  = PROJECT_DST,
                     dataset_id  = DATASET_DST,
                     location    = LOCATION,
@@ -81,15 +84,23 @@ with DAG(
                     exists_ok   = True
                 )
 
+                read_query = PythonOperator(
+                    task_id=f"read_query_{DATASET_DST}.{tm1_table}",
+                    python_callable=_read_query,
+                    op_kwargs = {
+                        "blobname": f'{SOURCE_NAME}/{PROJECT_DST}/{DATASET_DST}.{tm1_table}.sql',
+                    }
+                )                
+
                 with TaskGroup(
-                    f'run_query_tasks_group_{tm1_table}',
+                    f'run_query_tasks_group_{DATASET_DST}.{tm1_table}',
                     prefix_group_id=False,
                 ) as run_query_tasks_group:
 
-                    for interval in range(0,10):
+                    for interval in range(0,RUN_DATE):
 
                         gen_date = PythonOperator(
-                            task_id=f"gen_date_{tm1_table}_{interval}",
+                            task_id=f"gen_date_{DATASET_DST}.{tm1_table}_{interval}",
                             python_callable=_gen_date,
                             op_kwargs = {
                                 "ds"    : '{{ ds }}',
@@ -97,25 +108,25 @@ with DAG(
                             }
                         )
 
-                        read_query = PythonOperator(
-                            task_id=f"read_query_{tm1_table}_{interval}",
-                            python_callable=_read_query,
+                        update_query = PythonOperator(
+                            task_id=f"update_query_{DATASET_DST}.{tm1_table}_{interval}",
+                            python_callable=_update_query,
                             op_kwargs = {
-                                "blobname": f'{SOURCE_NAME}/{PROJECT_DST}/{DATASET_DST}.{tm1_table}.sql',
-                                "run_date": f'{{{{ ti.xcom_pull(task_ids="gen_date_{tm1_table}_{interval}") }}}}'
+                                "query"   : f'{{{{ ti.xcom_pull(task_ids="read_query_{DATASET_DST}.{tm1_table}") }}}}',
+                                "run_date": f'{{{{ ti.xcom_pull(task_ids="gen_date_{DATASET_DST}.{tm1_table}_{interval}") }}}}'
                             }
                         )
 
                         load_final = BigQueryInsertJobOperator( 
-                            task_id = f"load_final_{tm1_table}_{interval}",
+                            task_id = f"load_final_{DATASET_DST}.{tm1_table}_{interval}",
                             gcp_conn_id = "convz_dev_service_account",
                             configuration = {
                                 "query": {
-                                    "query": f'{{{{ ti.xcom_pull(task_ids="read_query_{tm1_table}_{interval}") }}}}',
+                                    "query": f'{{{{ ti.xcom_pull(task_ids="update_query_{DATASET_DST}.{tm1_table}_{interval}") }}}}',
                                     "destinationTable": {
                                         "projectId": PROJECT_DST,
                                         "datasetId": DATASET_DST,
-                                        "tableId": f'{tm1_table.lower()}${{{{ ti.xcom_pull(task_ids="gen_date_{tm1_table}_{interval}").replace("-","") }}}}',
+                                        "tableId": f'test_{tm1_table.lower()}${{{{ ti.xcom_pull(task_ids="gen_date_{DATASET_DST}.{tm1_table}_{interval}").replace("-","") }}}}',
                                     },
                                     "createDisposition": "CREATE_IF_NEEDED",
                                     "writeDisposition": "WRITE_TRUNCATE",
@@ -127,8 +138,8 @@ with DAG(
                             }
                         )
 
-                        gen_date >> read_query >> load_final                        
+                        gen_date >> update_query >> load_final                        
 
-                create_ds >> run_query_tasks_group
+                create_ds >> read_query >> run_query_tasks_group
 
     start_task >> run_table_tasks_group >> end_task
