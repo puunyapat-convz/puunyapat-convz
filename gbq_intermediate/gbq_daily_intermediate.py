@@ -60,7 +60,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # CONFIG_VALUE = {"central-cto-ofm-data-hub-dev.odm_jda_b2s.b2s_jdasku_daily"   : 10}
+    # CONFIG_VALUE = {"central-cto-ofm-data-hub-dev.ofm_landing_zone_views.daily_ofm_tbproductmaster_table": 10}
 
     iterable_tables_list = CONFIG_VALUE.keys()
 
