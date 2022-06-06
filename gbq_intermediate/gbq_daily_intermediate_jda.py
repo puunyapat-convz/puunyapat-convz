@@ -40,9 +40,9 @@ def _gen_date(ds, offset):
 with DAG(
     dag_id="gbq_daily_intermediate_jda",
     # schedule_interval=None,
-    schedule_interval="30 03 * * *",
-    start_date=dt.datetime(2022, 6, 2),
-    catchup=True,
+    schedule_interval="00 03 * * *",
+    start_date=dt.datetime(2022, 6, 6),
+    catchup=False,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'intermediate', 'jda'],
     render_template_as_native_obj=True,
@@ -57,9 +57,13 @@ with DAG(
 
     CONFIG_VALUE = Variable.get(
         key='gbq_intermediate_jda',
+        default_var=['default_table'],
         deserialize_json=True
     )
-    # CONFIG_VALUE = {"central-cto-ofm-data-hub-dev.odm_jda_b2s.b2s_jdasku_daily"   : 10}
+    # CONFIG_VALUE = {
+    #     "central-cto-ofm-data-hub-dev.data_vs_ctrl_files.jda_b2s": [0,18],
+    #     "central-cto-ofm-data-hub-dev.data_vs_ctrl_files.jda_ofm": [0,18],
+    # }
 
     iterable_tables_list = CONFIG_VALUE.keys()
 
@@ -71,8 +75,11 @@ with DAG(
         if iterable_tables_list:
             for index, table_fqdn in enumerate(iterable_tables_list):
 
-                PROJECT_DST, DATASET_DST, tm1_table = table_fqdn.split(".")
-                RUN_DATE = CONFIG_VALUE.get(table_fqdn)
+                if table_fqdn[0] != '#':
+                    PROJECT_DST, DATASET_DST, tm1_table = table_fqdn.split(".")
+                    DATE_START, DATE_END = CONFIG_VALUE.get(table_fqdn)
+                else:
+                    continue
 
                 create_ds = BigQueryCreateEmptyDatasetOperator(
                     task_id     = f"create_ds_{DATASET_DST}.{tm1_table}",
@@ -96,14 +103,15 @@ with DAG(
                     prefix_group_id=False,
                 ) as run_query_tasks_group:
 
-                    for interval in range(0,RUN_DATE):
+                    for interval in range(DATE_START,DATE_END+1):
+                        interval = f"{interval:03d}"
 
                         gen_date = PythonOperator(
                             task_id=f"gen_date_{DATASET_DST}.{tm1_table}_{interval}",
                             python_callable=_gen_date,
                             op_kwargs = {
-                                "ds"    : '{{ ds }}',
-                                "offset": -interval
+                                "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
+                                "offset": -int(interval)
                             }
                         )
 
@@ -125,7 +133,7 @@ with DAG(
                                     "destinationTable": {
                                         "projectId": PROJECT_DST,
                                         "datasetId": DATASET_DST,
-                                        "tableId": f'test_{tm1_table.lower()}${{{{ ti.xcom_pull(task_ids="gen_date_{DATASET_DST}.{tm1_table}_{interval}").replace("-","") }}}}',
+                                        "tableId": f'{tm1_table}${{{{ ti.xcom_pull(task_ids="gen_date_{DATASET_DST}.{tm1_table}_{interval}").replace("-","") }}}}',
                                     },
                                     "createDisposition": "CREATE_IF_NEEDED",
                                     "writeDisposition": "WRITE_TRUNCATE",
