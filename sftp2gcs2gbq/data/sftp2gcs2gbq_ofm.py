@@ -143,6 +143,8 @@ with DAG(
             BUCKET_NAME = f"sftp-ofm-{source.lower()}-{BUCKET_TYPE}"
             DATASET_ID  = f"{source.lower()}_ofm_daily_source"
 
+            start_source = DummyOperator(task_id = f"start_task_{source}")
+
             with TaskGroup(
                 f'load_{source}_tasks_group',
                 prefix_group_id=False,
@@ -250,7 +252,9 @@ with DAG(
                             gen_date >> get_sftp >> [ skip_table, save_gcs ]
                             save_gcs >> [ archive_sftp, load_gbq ]
 
-                    [ create_table, list_file ] >> load_interval_tasks_group
+                    [ create_table, list_file ] >> load_interval_tasks_group  
 
+            start_source >> load_tables_tasks_group
+                
     start_task >> load_source_tasks_group >> end_task
 

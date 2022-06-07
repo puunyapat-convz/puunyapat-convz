@@ -162,6 +162,8 @@ with DAG(
             BUCKET_NAME = f"sftp-b2s-{source.lower()}-{BUCKET_TYPE}"
             DATASET_ID  = f"{source.lower()}_b2s_daily_ctrlfiles"
 
+            start_source = DummyOperator(task_id = f"start_task_{source}")
+
             with TaskGroup(
                 f'load_{source}_tasks_group',
                 prefix_group_id=False,
@@ -268,6 +270,8 @@ with DAG(
                             save_gcs >> [ archive_sftp, load_gbq ]
 
                     [ create_table, list_file ] >> load_interval_tasks_group
+
+            start_source >> load_tables_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
 
