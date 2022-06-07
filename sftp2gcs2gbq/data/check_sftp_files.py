@@ -29,6 +29,7 @@ def _list_file(ti, hookname, mainfolder, subfolder, tablename):
     if file_list == [ 'archive' ]:
         return f"no_alert_{mainfolder}_{subfolder}_{tablename}"
     else:
+        file_list.remove('archive')
         ti.xcom_push(key='stuck_files', value=file_list)
         ti.xcom_push(key='sftp_path', value=f"/{subfolder}/outbound/{tablename}/")
         return f"send_alert_{mainfolder}_{subfolder}_{tablename}"
@@ -42,10 +43,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'alert', 'sftp'],
     render_template_as_native_obj=True,
-    # default_args={
-    #     'on_failure_callback': ofm_task_fail_slack_alert,
-    #     'retries': 0
-    # }
+    default_args={
+        'on_failure_callback': ofm_task_fail_slack_alert,
+        'retries': 0
+    }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
