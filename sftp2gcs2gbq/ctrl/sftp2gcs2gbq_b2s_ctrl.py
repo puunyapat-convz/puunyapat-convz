@@ -13,7 +13,7 @@ from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import shutil, pathlib, fnmatch, logging
-# import time, random
+import time, random
 
 ######### VARIABLES ###########
 
@@ -53,9 +53,9 @@ SCHEMA    = {
 
 def _list_file(subfolder, tablename):
     ## put random delay to prevent EOFerror
-    # delay = round(random.uniform(0, 5), 3)
-    # log.info(f"Waiting with delay {delay} seconds...")
-    # time.sleep(delay)
+    delay = round(random.uniform(0, 10), 3)
+    log.info(f"Waiting with delay {delay} seconds...")
+    time.sleep(delay)
 
     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
     SFTP_HOOK.close_conn()
