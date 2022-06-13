@@ -240,6 +240,7 @@ with DAG(
                                         },
                                         "sourceFormat"   : "CSV",
                                         "fieldDelimiter" : "|",
+                                        "nullMarker"     : "NULL",
                                         "skipLeadingRows": 1,
                                         "timePartitioning" : { "type": "DAY" },
                                         "createDisposition": "CREATE_IF_NEEDED",
