@@ -114,10 +114,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'b2s'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
@@ -154,6 +154,7 @@ with DAG(
 
                     TABLE_ID = f'{table}'
                     PREFIX   = "JDA_" if source == "JDA" else ""
+                    NULLMARK = "NULL" if table  == "POS_DataPlatform_Txn_Sales" else None
 
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{table}",
@@ -240,7 +241,7 @@ with DAG(
                                         },
                                         "sourceFormat"   : "CSV",
                                         "fieldDelimiter" : "|",
-                                        "nullMarker"     : "NULL",
+                                        "nullMarker"     : NULLMARK,
                                         "skipLeadingRows": 1,
                                         "timePartitioning" : { "type": "DAY" },
                                         "createDisposition": "CREATE_IF_NEEDED",

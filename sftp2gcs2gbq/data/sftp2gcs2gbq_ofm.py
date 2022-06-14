@@ -154,6 +154,7 @@ with DAG(
 
                     TABLE_ID = f'{table}'
                     PREFIX   = "JDA_" if source == "JDA" else ""
+                    NULLMARK = "NULL" if table  == "POS_DataPlatform_Txn_Sales" else None
 
                     create_table = BigQueryCreateEmptyTableOperator(
                         task_id = f"create_table_{table}",
@@ -240,7 +241,7 @@ with DAG(
                                         },
                                         "sourceFormat"   : "CSV",
                                         "fieldDelimiter" : "|",
-                                        "nullMarker"     : "NULL",
+                                        "nullMarker"     : NULLMARK,
                                         "skipLeadingRows": 1,
                                         "timePartitioning" : { "type": "DAY" },
                                         "createDisposition": "CREATE_IF_NEEDED",
