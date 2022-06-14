@@ -45,7 +45,7 @@ with DAG(
     # schedule_interval=None,
     schedule_interval="00 14 * * *",
     start_date=dt.datetime(2022, 3, 7),
-    end_date=dt.datetime(2022, 4, 7),
+    end_date=dt.datetime(2022, 6, 6),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'sftp', 'utility'],
