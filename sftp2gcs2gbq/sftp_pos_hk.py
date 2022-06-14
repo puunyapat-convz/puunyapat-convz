@@ -1,4 +1,3 @@
-from shutil import move
 from airflow                   import configuration, DAG
 from airflow.operators.python  import PythonOperator, BranchPythonOperator
 from airflow.operators.dummy   import DummyOperator
@@ -7,8 +6,6 @@ from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 from airflow.macros            import *
 from utils.dag_notification    import *
-
-from airflow.providers.google.cloud.transfers.gcs_to_gcs import *
 
 import datetime as dt
 import logging, os
