@@ -95,7 +95,7 @@ with DAG(
 
                 for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
 
-                    TABLE_ID = f'test_{table}'
+                    TABLE_ID = f'{table}'
                     PREFIX   = "JDA_" if source == "JDA" else ""
                     NULLMARK = "NULL" if table  == "POS_DataPlatform_Txn_Sales" else None
 
