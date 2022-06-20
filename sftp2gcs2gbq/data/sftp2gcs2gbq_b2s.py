@@ -13,7 +13,7 @@ from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import shutil, pathlib, fnmatch, logging
-import time, random
+import time, math
 
 ######### VARIABLES ###########
 
@@ -21,6 +21,9 @@ log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0)
+
+MAX_CONN    = 7
+DELAY_STEP  = 5
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
@@ -32,9 +35,13 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 
 ###############################
 
-def _list_file(subfolder, tablename):
+def _list_file(subfolder, tablename, round_no):
     ## put random delay to prevent EOFerror
-    delay = round(random.uniform(0, 10), 3)
+    # delay = round(random.uniform(0, 3), 3)
+    if "POS" in tablename:
+        round_no += 4
+
+    delay = round_no * DELAY_STEP
     log.info(f"Waiting with delay {delay} seconds...")
     time.sleep(delay)
 
@@ -150,7 +157,7 @@ with DAG(
                 prefix_group_id=False,
             ) as load_tables_tasks_group:
 
-                for table in iterable_sources_list.get(f"{MAIN_FOLDER}_{source}"):
+                for index, table in enumerate(iterable_sources_list.get(f"{MAIN_FOLDER}_{source}")):
 
                     TABLE_ID = f'{table}'
                     PREFIX   = "JDA_" if source == "JDA" else ""
@@ -172,7 +179,8 @@ with DAG(
                         python_callable=_list_file,
                         op_kwargs = {
                             'subfolder': source,
-                            'tablename': table
+                            'tablename': table,
+                            'round_no' : math.floor(index/MAX_CONN)
                         }
                     )
 
