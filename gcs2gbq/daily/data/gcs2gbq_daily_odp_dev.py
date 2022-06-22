@@ -7,10 +7,7 @@ from airflow.utils.task_group  import TaskGroup
 from airflow.macros            import *
 from utils.dag_notification    import *
 
-from airflow.providers.google.cloud.operators.gcs             import *
 from airflow.providers.google.cloud.operators.bigquery        import *
-from airflow.providers.google.cloud.transfers.local_to_gcs    import *
-from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import os, logging
