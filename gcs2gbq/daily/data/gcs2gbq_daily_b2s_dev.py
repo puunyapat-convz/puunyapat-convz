@@ -177,4 +177,3 @@ with DAG(
             start_source >> load_tables_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
-
