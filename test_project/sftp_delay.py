@@ -74,13 +74,15 @@ all_tables = {
 }
 
 # tables   = all_tables.get("B2S_JDA")
-max_conn = 7
+max_conn = 21
 
 # div by 7
 for table_set in all_tables.keys():
+    print(table_set, len(all_tables.get(table_set)))
+
     for index, table in enumerate(all_tables.get(table_set)):
         order = math.floor(index/max_conn)
         if "POS" in table:
             order += 4
-        delay = order * 5
+        delay = order * 3
         print(index, table, delay)
