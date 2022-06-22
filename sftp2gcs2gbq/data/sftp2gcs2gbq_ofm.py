@@ -22,8 +22,8 @@ path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=30.0)
 
-MAX_CONN    = 7
-DELAY_STEP  = 5
+MAX_CONN    = 21
+DELAY_STEP  = 3
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
