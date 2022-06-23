@@ -347,7 +347,7 @@ with DAG(
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "arbildtl" ]
+    # iterable_tables_list = [ "potxhead" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
