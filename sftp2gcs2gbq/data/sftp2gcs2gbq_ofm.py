@@ -22,8 +22,8 @@ path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
 SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=30.0)
 
-MAX_CONN    = 21
-DELAY_STEP  = 3
+MAX_CONN    = 7
+DELAY_STEP  = 4
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
@@ -121,10 +121,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'ofm'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
