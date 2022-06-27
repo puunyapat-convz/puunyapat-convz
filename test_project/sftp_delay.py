@@ -74,7 +74,8 @@ all_tables = {
 }
 
 # tables   = all_tables.get("B2S_JDA")
-max_conn = 21
+max_conn = 7
+deplay_step = 4
 
 # div by 7
 for table_set in all_tables.keys():
@@ -84,5 +85,5 @@ for table_set in all_tables.keys():
         order = math.floor(index/max_conn)
         if "POS" in table:
             order += 4
-        delay = order * 3
+        delay = order * deplay_step
         print(index, table, delay)
