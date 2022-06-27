@@ -23,7 +23,7 @@ MAIN_PATH = path + "/../data"
 SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0)
 
 MAX_CONN    = 7
-DELAY_STEP  = 4
+DELAY_STEP  = 5
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
