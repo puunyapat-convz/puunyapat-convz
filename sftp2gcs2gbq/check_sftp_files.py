@@ -85,6 +85,7 @@ with DAG(
                         list_file = BranchPythonOperator(
                             task_id=f'list_file_{source}_{subsource}_{table}',
                             python_callable=_list_file,
+                            pool='sftp_connect_pool',
                             op_kwargs = {
                                 'hookname'  : f"sftp-{source.lower()}-connection",
                                 'mainfolder': source,
