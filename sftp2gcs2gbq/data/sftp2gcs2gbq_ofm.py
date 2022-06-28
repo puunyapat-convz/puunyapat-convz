@@ -41,9 +41,9 @@ def _list_file(subfolder, tablename, round_no):
     if "POS" in tablename:
         round_no += 4
 
-    delay = round_no * DELAY_STEP
-    log.info(f"Waiting with delay {delay} seconds...")
-    time.sleep(delay)
+    # delay = round_no * DELAY_STEP
+    # log.info(f"Waiting with delay {delay} seconds...")
+    # time.sleep(delay)
 
     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
     SFTP_HOOK.close_conn()
@@ -177,6 +177,7 @@ with DAG(
                     list_file = PythonOperator(
                         task_id=f'list_file_{table}',
                         python_callable=_list_file,
+                        pool='sftp_connect_pool',
                         op_kwargs = {
                             'subfolder': source,
                             'tablename': table,
@@ -205,6 +206,7 @@ with DAG(
                             get_sftp = BranchPythonOperator(
                                 task_id=f'get_sftp_{table}_{interval}',
                                 python_callable=_get_sftp,
+                                pool='sftp_connect_pool',
                                 op_kwargs = {
                                     'subfolder': source,
                                     'tablename': table,
@@ -227,6 +229,7 @@ with DAG(
                             archive_sftp = PythonOperator(
                                 task_id=f'archive_sftp_{table}_{interval}',
                                 python_callable=_archive_sftp,
+                                pool='sftp_connect_pool',
                                 op_kwargs = {
                                     'subfolder': source,
                                     'tablename': table,

@@ -170,6 +170,7 @@ with DAG(
                     list_file = PythonOperator(
                         task_id=f'list_file_{source}_{table}',
                         python_callable=_list_file,
+                        pool='sftp_connect_pool',
                         op_kwargs = {
                             'hookname' : f"sftp-{source.lower()}-connection",
                             'subfolder': SUB_FOLDER,
@@ -201,6 +202,7 @@ with DAG(
                                 get_sftp = BranchPythonOperator(
                                     task_id=f'get_sftp_{source}_{table}_{interval}',
                                     python_callable=_get_sftp,
+                                    pool='sftp_connect_pool',
                                     op_kwargs = {
                                         'hookname'  : f"sftp-{source.lower()}-connection",
                                         'mainfolder': source,
@@ -224,6 +226,7 @@ with DAG(
                                 archive_sftp = PythonOperator(
                                     task_id=f'archive_sftp_{source}_{table}_{interval}',
                                     python_callable=_archive_sftp,
+                                    pool='sftp_connect_pool',
                                     op_kwargs = {
                                         'hookname' : f"sftp-{source.lower()}-connection",
                                         'mainfolder': source,
