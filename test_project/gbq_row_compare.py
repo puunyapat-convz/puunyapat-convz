@@ -1,6 +1,5 @@
 from airflow                   import configuration, DAG
-from airflow.operators.python  import PythonOperator, BranchPythonOperator
-from airflow.operators.bash    import BashOperator
+from airflow.operators.python  import PythonOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
@@ -9,7 +8,7 @@ from airflow.macros            import *
 from airflow.providers.google.cloud.operators.bigquery        import *
 
 import datetime as dt
-import os, logging
+import logging
 
 ######### VARIABLES ###########
 
@@ -48,7 +47,7 @@ def _create_query(prd_fqdn, dev_fqdn, dataset):
         if "pos" in item or "jda" in item:
             partition = "DATE(_PARTITIONTIME)"
         else:
-            partition = "`report_date`"
+            partition = "DATE(`report_date`)"
 
     query = SQL_COMMAND.replace("[partition]",partition)
     query = query.replace("[dev_fqdn]",dev_fqdn).replace("[prod_fqdn]",prd_fqdn)
@@ -127,6 +126,28 @@ with DAG(
                 }
             )
 
-            create_query >> run_query
+            save_file = BigQueryInsertJobOperator( 
+            task_id = f"save_file_{PRD_DATASET}_{table}",
+            gcp_conn_id = "convz_dev_service_account",
+            configuration = {
+                "extract": {
+                    "destinationUris": [
+                        f"gs://ofm-data/test/{PRD_DATASET}_{table}.csv"
+                    ],
+                    "sourceTable": {
+                        "projectId": "central-cto-ofm-data-hub-dev",
+                        "datasetId": "airflow_test_mds",
+                        "tableId": f"compare_{PRD_DATASET}_{table}",
+                    },                            
+                    "printHeader": True,
+                    "fieldDelimiter": ",",
+                    "destinationFormat": "CSV",
+                    "compression": "None",
+                    "useAvroLogicalTypes": False,
+                    }
+                }
+            )
 
+            create_query >> run_query >> save_file
+            
     start_task >> compare_tasks_group >> end_task
