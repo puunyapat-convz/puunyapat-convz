@@ -74,7 +74,7 @@ with DAG(
     end_task   = DummyOperator(task_id = "end_task")
 
     iterable_list = Variable.get(
-        key=f'gbq_compare',
+        key=f'gbq_compare_test',
         deserialize_json=True
     )
 
