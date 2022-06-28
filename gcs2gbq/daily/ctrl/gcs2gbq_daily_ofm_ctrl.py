@@ -71,6 +71,7 @@ with DAG(
     tags=['convz', 'production', 'mario', 'daily_ctrl', 'officemate'],
     render_template_as_native_obj=True,
     default_args={
+        'pool': 'gcs2gbq_daily_ofm_pool',
         'on_failure_callback': ofm_task_fail_slack_alert,
         'retries': 0
     }
