@@ -25,7 +25,7 @@ BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "gbq_intermediate"
 LOCATION     = "asia-southeast1"
 
-NODASH_TABLE = [ "b2s_jdaacstk_daily_v2", "ofm_jdaacstk_daily_v2" ]
+SHORTDATE_TB = [ "b2s_jdaacstk_daily_v2", "ofm_jdaacstk_daily_v2" ]
 
 def _read_query(blobname):
     storage_client = storage.Client()
@@ -35,7 +35,7 @@ def _read_query(blobname):
 
 def _update_query(query, table, run_date):
 
-    if table in NODASH_TABLE:
+    if table in SHORTDATE_TB:
         run_date = run_date.replace("-","")[2:]
 
     return query.replace("CURRENT_DATE",run_date)
