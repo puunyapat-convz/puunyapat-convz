@@ -23,7 +23,9 @@ MAIN_PATH = path + "/../data"
 
 BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "gbq_intermediate"
-LOCATION     = "asia-southeast1" 
+LOCATION     = "asia-southeast1"
+
+NODASH_TABLE = [ "b2s_jdaacstk_daily_v2", "ofm_jdaacstk_daily_v2" ]
 
 def _read_query(blobname):
     storage_client = storage.Client()
@@ -31,7 +33,11 @@ def _read_query(blobname):
     blob   = storage.Blob(blobname, bucket)
     return blob.download_as_bytes().decode()
 
-def _update_query(query, run_date):
+def _update_query(query, table, run_date):
+
+    if table in NODASH_TABLE:
+        run_date = run_date.replace("-","")[2:]
+
     return query.replace("CURRENT_DATE",run_date)
 
 def _gen_date(ds, offset):
@@ -61,8 +67,8 @@ with DAG(
         deserialize_json=True
     )
     # CONFIG_VALUE = {
-    #     "central-cto-ofm-data-hub-dev.data_vs_ctrl_files.jda_b2s": [0,18],
-    #     "central-cto-ofm-data-hub-dev.data_vs_ctrl_files.jda_ofm": [0,18],
+    #     "central-cto-ofm-data-hub-prod.jda_b2s_landing_zone_views.b2s_jdaacstk_daily_v2": [1,10],
+    #     "central-cto-ofm-data-hub-prod.jda_ofm_landing_zone_views.ofm_jdaacstk_daily_v2": [1,10]
     # }
 
     iterable_tables_list = CONFIG_VALUE.keys()
@@ -96,7 +102,7 @@ with DAG(
                     op_kwargs = {
                         "blobname": f'{SOURCE_NAME}/{PROJECT_DST}/{DATASET_DST}.{tm1_table}.sql',
                     }
-                )                
+                )
 
                 with TaskGroup(
                     f'run_query_tasks_group_{DATASET_DST}.{tm1_table}',
@@ -120,6 +126,7 @@ with DAG(
                             python_callable=_update_query,
                             op_kwargs = {
                                 "query"   : f'{{{{ ti.xcom_pull(task_ids="read_query_{DATASET_DST}.{tm1_table}") }}}}',
+                                "table"   : tm1_table,
                                 "run_date": f'{{{{ ti.xcom_pull(task_ids="gen_date_{DATASET_DST}.{tm1_table}_{interval}") }}}}'
                             }
                         )
