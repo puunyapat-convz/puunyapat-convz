@@ -67,8 +67,7 @@ with DAG(
         deserialize_json=True
     )
     # CONFIG_VALUE = {
-    #     "central-cto-ofm-data-hub-prod.jda_b2s_landing_zone_views.b2s_jdaacstk_daily_v2": [1,10],
-    #     "central-cto-ofm-data-hub-prod.jda_ofm_landing_zone_views.ofm_jdaacstk_daily_v2": [1,10]
+    #     "central-cto-ofm-data-hub-prod.jda_ofm_landing_zone_views.product_replenishment_table": [1,10]
     # }
 
     iterable_tables_list = CONFIG_VALUE.keys()
