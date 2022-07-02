@@ -82,7 +82,7 @@ def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
     log.info(f"Local path: [{local_path}]")
     log.info(f"SFTP archive path: [{archive_path}]")
 
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0, conn_timeout = 30)
 
     for filename in file_list:
         new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')

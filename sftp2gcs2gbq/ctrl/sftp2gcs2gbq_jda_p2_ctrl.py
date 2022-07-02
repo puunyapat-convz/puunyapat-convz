@@ -50,7 +50,7 @@ SCHEMA    = {
 ###############################
 
 def _list_file(hookname, subfolder, tablename):
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0, conn_timeout = 30)
     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
     SFTP_HOOK.close_conn()
     return file_list

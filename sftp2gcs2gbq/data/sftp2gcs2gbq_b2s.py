@@ -20,7 +20,7 @@ import time, math
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
-SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0)
+SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0, conn_timeout = 30)
 
 MAX_CONN    = 7
 DELAY_STEP  = 5

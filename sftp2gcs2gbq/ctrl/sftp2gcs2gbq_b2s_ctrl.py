@@ -20,7 +20,7 @@ import time, math
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
-SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0)
+SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-b2s-connection", banner_timeout=30.0, conn_timeout = 30)
 
 MAX_CONN    = 7
 DELAY_STEP  = 5
@@ -140,10 +140,10 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_ctrl', 'sftp', 'b2s'],
     render_template_as_native_obj=True,
-    default_args={
-        'on_failure_callback': ofm_task_fail_slack_alert,
-        'retries': 0
-    }
+    # default_args={
+    #     'on_failure_callback': ofm_task_fail_slack_alert,
+    #     'retries': 0
+    # }
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
