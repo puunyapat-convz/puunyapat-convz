@@ -25,7 +25,7 @@ BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "gbq_intermediate"
 LOCATION     = "asia-southeast1"
 
-SHORTDATE_TB = [ "b2s_jdaacstk_daily_v2", "ofm_jdaacstk_daily_v2" ]
+SHORTDATE_TB = [ "central-cto-ofm-data-hub-prod.jda_ofm_landing_zone_views.ofm_jdaacstk_daily_v2" ]
 
 def _read_query(blobname):
     storage_client = storage.Client()
@@ -125,7 +125,7 @@ with DAG(
                             python_callable=_update_query,
                             op_kwargs = {
                                 "query"   : f'{{{{ ti.xcom_pull(task_ids="read_query_{DATASET_DST}.{tm1_table}") }}}}',
-                                "table"   : tm1_table,
+                                "table"   : table_fqdn,
                                 "run_date": f'{{{{ ti.xcom_pull(task_ids="gen_date_{DATASET_DST}.{tm1_table}_{interval}") }}}}'
                             }
                         )
