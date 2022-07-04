@@ -74,16 +74,23 @@ all_tables = {
 }
 
 # tables   = all_tables.get("B2S_JDA")
-max_conn = 7
-deplay_step = 4
+# max_conn = 7
+# deplay_step = 4
 
-# div by 7
-for table_set in all_tables.keys():
-    print(table_set, len(all_tables.get(table_set)))
+# # div by 7
+# for table_set in all_tables.keys():
+#     print(table_set, len(all_tables.get(table_set)))
 
-    for index, table in enumerate(all_tables.get(table_set)):
-        order = math.floor(index/max_conn)
-        if "POS" in table:
-            order += 4
-        delay = order * deplay_step
-        print(index, table, delay)
+#     for index, table in enumerate(all_tables.get(table_set)):
+#         order = math.floor(index/max_conn)
+#         if "POS" in table:
+#             order += 4
+#         delay = order * deplay_step
+#         print(index, table, delay)
+
+from datetime import datetime
+import arrow
+
+now = datetime.utcnow()
+
+print(arrow.get(now).to('Asia/Bangkok'))
