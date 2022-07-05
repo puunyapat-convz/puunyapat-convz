@@ -35,9 +35,10 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 ###############################
 
 def _gen_date(ds, offset):
-    localtime = arrow.get(ds).to(TIMEZONE).strftime("%Y-%m-%d")
-    log.info(f"local time: {localtime}")
-    return ds_add(localtime, offset)
+    localtime = arrow.get(ds).to(TIMEZONE)
+    log.info(f"UTC time: {ds}")
+    log.info(f"Local time: {localtime}")
+    return ds_add(localtime.strftime("%Y-%m-%d"), offset)
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str):
     remote_path  = f"/{subfolder}/outbound/{tablename}/"
@@ -93,9 +94,9 @@ def _remove_local(subfolder, tablename, date_str):
 with DAG(
     dag_id="sftp2gcs2gbq_test",
     # schedule_interval=None,
-    schedule_interval="00 23 * * *",
-    start_date=dt.datetime(2022, 7, 2),
-    end_date=dt.datetime(2022, 7, 2, 23, 30),
+    schedule_interval="50 20,11,15 * * *",
+    start_date=dt.datetime(2022, 7, 3),
+    end_date=dt.datetime(2022, 7, 3, 21, 00),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'development', 'mario', 'daily_data', 'sftp'],
