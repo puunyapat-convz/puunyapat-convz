@@ -12,18 +12,16 @@ from airflow.providers.google.cloud.transfers.local_to_gcs    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
-import shutil, pathlib, fnmatch, logging
-import time, math
+import shutil, pathlib, fnmatch, logging, arrow
 
 ######### VARIABLES ###########
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
-SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=30.0, conn_timeout = 30)
 
-MAX_CONN    = 7
-DELAY_STEP  = 5
+SFTP_HOOK = SFTPHook(ssh_conn_id="sftp-odp-connection", banner_timeout=120, conn_timeout = 120)
+TIMEZONE  = 'Asia/Bangkok'
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
@@ -35,22 +33,16 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 
 ###############################
 
-def _list_file(subfolder, tablename, round_no):
-    ## put random delay to prevent EOFerror
-    # delay = round(random.uniform(0, 3), 3)
-    if "POS" in tablename:
-        round_no += 4
-
-    # delay = round_no * DELAY_STEP
-    # log.info(f"Waiting with delay {delay} seconds...")
-    # time.sleep(delay)
-
+def _list_file(subfolder, tablename):
     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
     SFTP_HOOK.close_conn()
     return file_list
 
 def _gen_date(ds, offset):
-    return ds_add(ds, offset)
+    localtime = arrow.get(ds).to(TIMEZONE)
+    log.info(f"UTC time: {ds}")
+    log.info(f"{TIMEZONE} time: {localtime}")
+    return ds_add(localtime.strftime("%Y-%m-%d"), offset)
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
     remote_path = f"/{subfolder}/outbound/{tablename}/"
@@ -115,8 +107,8 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_ofm",
     # schedule_interval=None,
-    schedule_interval="30 00,11,17 * * *",
-    start_date=dt.datetime(2022, 5, 19),
+    schedule_interval="15 20,11,16 * * *",
+    start_date=dt.datetime(2022, 7, 4),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'ofm'],
@@ -180,8 +172,7 @@ with DAG(
                         pool='sftp_connect_pool',
                         op_kwargs = {
                             'subfolder': source,
-                            'tablename': table,
-                            'round_no' : math.floor(index/MAX_CONN)
+                            'tablename': table
                         }
                     )
 
@@ -198,7 +189,7 @@ with DAG(
                                 task_id=f"gen_date_{table}_{interval}",
                                 python_callable=_gen_date,
                                 op_kwargs = {
-                                    "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
+                                    "ds"    : '{{ data_interval_end }}',
                                     "offset": -interval
                                 }
                             )

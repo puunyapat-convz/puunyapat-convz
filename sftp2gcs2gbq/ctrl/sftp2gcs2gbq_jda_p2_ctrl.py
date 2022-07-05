@@ -12,13 +12,15 @@ from airflow.providers.google.cloud.transfers.local_to_gcs    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
-import shutil, pathlib, fnmatch, logging
+import shutil, pathlib, fnmatch, logging, arrow
 
 ######### VARIABLES ###########
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
 MAIN_PATH = path + "/../data"
+
+TIMEZONE  = 'Asia/Bangkok'
 
 PROJECT_ID  = 'central-cto-ofm-data-hub-prod'
 SOURCE_TYPE = "daily"
@@ -50,13 +52,16 @@ SCHEMA    = {
 ###############################
 
 def _list_file(hookname, subfolder, tablename):
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0, conn_timeout = 30)
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=120, conn_timeout = 120)
     file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
     SFTP_HOOK.close_conn()
     return file_list
 
 def _gen_date(ds, offset):
-    return ds_add(ds, offset)
+    localtime = arrow.get(ds).to(TIMEZONE)
+    log.info(f"UTC time: {ds}")
+    log.info(f"{TIMEZONE} time: {localtime}")
+    return ds_add(localtime.strftime("%Y-%m-%d"), offset)
 
 def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_list):
     remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/"
@@ -70,7 +75,7 @@ def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_lis
     log.info(f"Remote path and file criteria: [{remote_path}{pattern}]")
     log.info(f"Local path: [{local_path}]")
     
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=120, conn_timeout = 120)
 
     for filename in sftp_list:
         if fnmatch.fnmatch(filename, pattern):
@@ -101,7 +106,7 @@ def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
     log.info(f"Local path: [{local_path}]")
     log.info(f"SFTP archive path: [{archive_path}]")
 
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=30.0)
+    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=120, conn_timeout = 120)
 
     for filename in file_list:
         new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')
@@ -213,7 +218,7 @@ with DAG(
                                     task_id=f"gen_date_{source}_{table}_{interval}",
                                     python_callable=_gen_date,
                                     op_kwargs = {
-                                        "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
+                                        "ds"    : '{{ data_interval_end }}',
                                         "offset": -interval
                                     }
                                 )

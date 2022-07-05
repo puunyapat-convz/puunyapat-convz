@@ -41,7 +41,7 @@ def _list_file(subfolder, tablename):
 def _gen_date(ds, offset):
     localtime = arrow.get(ds).to(TIMEZONE)
     log.info(f"UTC time: {ds}")
-    log.info(f"Local time: {localtime}")
+    log.info(f"{TIMEZONE} time: {localtime}")
     return ds_add(localtime.strftime("%Y-%m-%d"), offset)
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str, sftp_list):
@@ -107,8 +107,8 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_b2s",
     # schedule_interval=None,
-    schedule_interval="00 00,11,17 * * *",
-    start_date=dt.datetime(2022, 5, 20),
+    schedule_interval="50 20,11,15 * * *",
+    start_date=dt.datetime(2022, 7, 4),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'b2s'],
@@ -172,7 +172,7 @@ with DAG(
                         pool='sftp_connect_pool',
                         op_kwargs = {
                             'subfolder': source,
-                            'tablename': table,
+                            'tablename': table
                         }
                     )
 
@@ -189,7 +189,7 @@ with DAG(
                                 task_id=f"gen_date_{table}_{interval}",
                                 python_callable=_gen_date,
                                 op_kwargs = {
-                                    "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
+                                    "ds"    : '{{ data_interval_end }}',
                                     "offset": -interval
                                 }
                             )
