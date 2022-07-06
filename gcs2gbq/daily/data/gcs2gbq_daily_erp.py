@@ -16,10 +16,7 @@ from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import pandas   as pd
-import pathlib
-import tempfile
-import logging
-import json
+import pathlib, tempfile, logging, json, arrow
 
 ######### VARIABLES ###########
 
@@ -49,7 +46,9 @@ DATE_FORMAT = {
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
+
 MAIN_PATH = path + "/../data"
+TIMEZONE  = 'Asia/Bangkok'
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-ERP"
@@ -175,7 +174,7 @@ def _generate_schema(table_name, report_date, run_date):
     schema.append({"name":"run_date", "type":"DATE", "mode":"REQUIRED"})
 
     query = f"{query}\tDATE('{report_date}') AS `report_date`,\n"
-    query = f"{query}\tDATE('" + f"{run_date.strftime('%Y-%m-%d')}') AS `run_date`\n"
+    query = f"{query}\tDATE('" + f"{run_date}') AS `run_date`\n"
     query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}_stg.{table_name}_{SOURCE_TYPE}_stg`\n"
 
     return schema, query
@@ -305,12 +304,24 @@ def blob_lines(filename):
 
         position += BLOB_CHUNK_SIZE + 1  # Blob chunk is downloaded using closed interval
 
+def _gen_date(logical, int_end):
+    local_logical = arrow.get(logical).to(TIMEZONE)
+    local_int_end = arrow.get(int_end).to(TIMEZONE)
+
+    log.info(f"UTC logical_date: {logical}")
+    log.info(f"{TIMEZONE} logical_date: {local_logical}")
+
+    log.info(f"UTC date_interval_end: {int_end}")
+    log.info(f"{TIMEZONE} date_interval_end: {local_int_end}")
+
+    ## return as [ ds, data_interval_end ] in local timezone
+    return [ local_logical.strftime("%Y-%m-%d"), local_int_end.strftime("%Y-%m-%d") ]
 
 with DAG(
     dag_id="gcs2gbq_daily_erp",
     # schedule_interval=None,
-    schedule_interval="40 00 * * *",
-    start_date=dt.datetime(2022, 4, 4),
+    schedule_interval="10 23 * * *",
+    start_date=dt.datetime(2022, 7, 5),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'erp'],
@@ -342,6 +353,15 @@ with DAG(
         exists_ok   = True
     )
 
+    gen_date = PythonOperator(
+        task_id=f"gen_date",
+        python_callable=_gen_date,
+        op_kwargs = {
+            'logical': '{{ ts }}',
+            'int_end': '{{ data_interval_end }}'
+        }
+    )
+
     iterable_tables_list = Variable.get(
         key=f'{SOURCE_NAME}_{SOURCE_TYPE}',
         default_var=['default_table'],
@@ -361,7 +381,7 @@ with DAG(
                     task_id = f"create_list_{tm1_table}",
                     cwd     = MAIN_PATH,
                     bash_command = f"temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
-                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ds.replace("-","_") }}}}*.jsonl"'
+                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","_") }}}}*.jsonl"'
                                                                                     ## use yesterday_ds for manual run ^
                                     + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
                                     + f' echo "{MAIN_PATH}/$temp"'
@@ -373,7 +393,7 @@ with DAG(
                     op_kwargs = { 
                         'tablename' : tm1_table,
                         'filename' : f'{{{{ ti.xcom_pull(task_ids="create_list_{tm1_table}") }}}}',
-                        'gcs_path' : f"gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ds.replace('-','_') }}}}*.jsonl"
+                        'gcs_path' : f'gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","_") }}}}*.jsonl'
                     }
                 )
 
@@ -413,8 +433,8 @@ with DAG(
                     python_callable=_generate_schema,
                     op_kwargs={ 
                         'table_name' : tm1_table,
-                        'report_date': '{{ ds }}',
-                        'run_date'   : '{{ data_interval_end }}'
+                        'report_date': '{{ ti.xcom_pull(task_ids="gen_date")[0] }}',
+                        'run_date'   : '{{ ti.xcom_pull(task_ids="gen_date")[1] }}'
                     },
                 )
 
@@ -524,7 +544,7 @@ with DAG(
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": f"{DATASET_ID}_stg",
-                                "tableId": f"{tm1_table}_{SOURCE_TYPE}_stg${{{{ ds_nodash }}}}"
+                                "tableId": f'{tm1_table}_{SOURCE_TYPE}_stg${{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","") }}}}'
                             },
                             "schema": f'{{{{ ti.xcom_pull(task_ids="update_schema_{tm1_table}") }}}}',
                             "timePartitioning": { "type": "DAY" },
@@ -545,7 +565,7 @@ with DAG(
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": DATASET_ID,
-                                "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ds_nodash }}}}"
+                                "tableId": f'{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","") }}}}'
                             },
                             "createDisposition": "CREATE_IF_NEEDED",
                             "writeDisposition": "WRITE_TRUNCATE",
@@ -566,5 +586,5 @@ with DAG(
                 create_schema >> schema_to_gcs >> create_final_table >> load_final
 
     # DAG level dependencies
-    start_task >> [ create_ds_final, create_ds_stg ] >> load_folders_tasks_group
+    start_task >> [ create_ds_final, create_ds_stg ] >> gen_date >> load_folders_tasks_group
     load_folders_tasks_group >> end_task
