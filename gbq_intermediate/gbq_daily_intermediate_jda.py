@@ -15,11 +15,13 @@ from airflow.providers.google.cloud.transfers.gcs_to_local    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
-import logging
+import logging, arrow
 
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
+
 MAIN_PATH = path + "/../data"
+TIMEZONE  = 'Asia/Bangkok'
 
 BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "gbq_intermediate"
@@ -44,12 +46,15 @@ def _update_query(query, table, run_date):
     return query.replace("CURRENT_DATE",run_date)
 
 def _gen_date(ds, offset):
-    return ds_add(ds, offset)
+    localtime = arrow.get(ds).to(TIMEZONE)
+    log.info(f"UTC time: {ds}")
+    log.info(f"{TIMEZONE} time: {localtime}")
+    return ds_add(localtime.strftime("%Y-%m-%d"), offset)
 
 with DAG(
     dag_id="gbq_daily_intermediate_jda",
     # schedule_interval=None,
-    schedule_interval="00 03 * * *",
+    schedule_interval="00 23 * * *",
     start_date=dt.datetime(2022, 6, 6),
     catchup=False,
     max_active_runs=1,
@@ -118,7 +123,7 @@ with DAG(
                             task_id=f"gen_date_{DATASET_DST}.{tm1_table}_{interval}",
                             python_callable=_gen_date,
                             op_kwargs = {
-                                "ds"    : '{{ data_interval_end.strftime("%Y-%m-%d") }}',
+                                "ds"    : '{{ data_interval_end }}',
                                 "offset": -int(interval)
                             }
                         )
