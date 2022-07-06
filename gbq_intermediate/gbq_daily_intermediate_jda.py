@@ -25,7 +25,10 @@ BUCKET_NAME  = "ofm-data"
 SOURCE_NAME  = "gbq_intermediate"
 LOCATION     = "asia-southeast1"
 
-SHORTDATE_TB = [ "central-cto-ofm-data-hub-prod.jda_ofm_landing_zone_views.ofm_jdaacstk_daily_v2" ]
+SHORTDATE_TB = [ 
+    "central-cto-ofm-data-hub-prod.jda_b2s_landing_zone_views.b2s_jdaacstk_daily_v2",
+    "central-cto-ofm-data-hub-prod.jda_ofm_landing_zone_views.ofm_jdaacstk_daily_v2"
+]
 
 def _read_query(blobname):
     storage_client = storage.Client()
