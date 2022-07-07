@@ -288,4 +288,3 @@ with DAG(
                     start_source >> [ create_table, list_file ] >> load_interval_tasks_group
 
     start_task >> load_source_tasks_group >> end_task
-
