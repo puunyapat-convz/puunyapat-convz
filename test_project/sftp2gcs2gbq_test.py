@@ -4,7 +4,7 @@ from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 from airflow.macros            import *
-from utils.dag_notification    import *
+# from utils.dag_notification    import *
 
 from airflow.providers.sftp.hooks.sftp                        import *
 from airflow.providers.ssh.hooks.ssh                          import *
@@ -94,9 +94,9 @@ def _remove_local(subfolder, tablename, date_str):
 with DAG(
     dag_id="sftp2gcs2gbq_test",
     # schedule_interval=None,
-    schedule_interval="50 20,11,15 * * *",
-    start_date=dt.datetime(2022, 7, 3),
-    end_date=dt.datetime(2022, 7, 3, 21, 00),
+    schedule_interval="50 20 * * *",
+    start_date=dt.datetime(2022, 7, 6),
+    end_date=dt.datetime(2022, 7, 6, 21, 00),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'development', 'mario', 'daily_data', 'sftp'],
