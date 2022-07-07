@@ -54,7 +54,7 @@ def _gen_date(ds, offset):
 with DAG(
     dag_id="gbq_daily_intermediate_jda",
     # schedule_interval=None,
-    schedule_interval="00 23 * * *",
+    schedule_interval="15 23 * * *",
     start_date=dt.datetime(2022, 6, 6),
     catchup=True,
     max_active_runs=1,
