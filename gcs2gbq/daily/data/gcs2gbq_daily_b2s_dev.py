@@ -51,7 +51,7 @@ with DAG(
     start_date=dt.datetime(2022, 6, 16),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'development', 'mario', 'daily_data', 'b2s'],
+    tags=['convz', 'gcs', 'development', 'mario', 'daily_data', 'b2s'],
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,

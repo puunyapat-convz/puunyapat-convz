@@ -68,7 +68,7 @@ with DAG(
     start_date=dt.datetime(2022, 4, 28),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'production', 'mario', 'daily_ctrl', 'officemate'],
+    tags=['convz', 'gcs',  'production', 'mario', 'daily_ctrl', 'officemate'],
     render_template_as_native_obj=True,
     default_args={
         'pool': 'gcs2gbq_daily_ofm_pool',
