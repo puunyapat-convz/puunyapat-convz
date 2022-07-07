@@ -111,7 +111,7 @@ def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_jda_p2",
     # schedule_interval=None,
-    schedule_interval="30 20 * * *",
+    schedule_interval="05 23 * * *",
     start_date=dt.datetime(2022, 5, 22),
     catchup=True,
     max_active_runs=1,

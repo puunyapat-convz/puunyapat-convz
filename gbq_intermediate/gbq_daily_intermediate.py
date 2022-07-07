@@ -45,8 +45,8 @@ def _gen_date(ds, offset):
 with DAG(
     dag_id="gbq_daily_intermediate",
     # schedule_interval=None,
-    schedule_interval="30 23 * * *",
-    start_date=dt.datetime(2022, 7, 5),
+    schedule_interval="35 23 * * *",
+    start_date=dt.datetime(2022, 7, 6),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'intermediate'],

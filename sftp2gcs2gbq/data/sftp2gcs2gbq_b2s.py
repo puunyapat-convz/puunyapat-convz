@@ -107,8 +107,8 @@ def _archive_sftp(subfolder, tablename, date_str, file_list):
 with DAG(
     dag_id="sftp2gcs2gbq_b2s",
     # schedule_interval=None,
-    schedule_interval="50 20,11,15 * * *",
-    start_date=dt.datetime(2022, 7, 4),
+    schedule_interval="40 22,11,15 * * *",
+    start_date=dt.datetime(2022, 7, 6),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'b2s'],
