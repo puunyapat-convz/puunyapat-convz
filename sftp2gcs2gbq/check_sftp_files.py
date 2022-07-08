@@ -37,8 +37,8 @@ def _list_file(ti, hookname, mainfolder, subfolder, tablename):
 with DAG(
     dag_id="check_sftp_files",
     # schedule_interval=None,
-    schedule_interval="10 23 * * *",
-    start_date=dt.datetime(2022, 7, 6),
+    schedule_interval="59 23 * * *",
+    start_date=dt.datetime(2022, 7, 7),
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'alert', 'sftp'],
