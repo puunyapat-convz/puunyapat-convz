@@ -32,21 +32,16 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT" }
 
 ###############################
 
-def _list_file(hookname, subfolder, tablename):
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=120, conn_timeout = 120)
-    file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
-    SFTP_HOOK.close_conn()
-    return file_list
-
 def _gen_date(ds, offset):
     localtime = arrow.get(ds).to(TIMEZONE)
     log.info(f"UTC time: {ds}")
     log.info(f"{TIMEZONE} time: {localtime}")
     return ds_add(localtime.strftime("%Y-%m-%d"), offset)
 
-def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_list):
-    remote_path = f"/{SUB_FOLDER}/outbound/{tablename}/"
-    local_path  = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/data/{tablename}_{date_str}/"
+def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str):
+    remote_path  = f"/{SUB_FOLDER}/outbound/{tablename}/"
+    archive_path = f"/{SUB_FOLDER}/outbound/{tablename}/archive/"
+    local_path   = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/data/{tablename}_{date_str}/"
 
     extension = FILE_EXT.get(SUB_FOLDER)
     pattern   = f"*{date_str.replace('-','')}*.{extension}"
@@ -54,22 +49,40 @@ def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_lis
 
     pathlib.Path(local_path).mkdir(parents=True, exist_ok=True)
     log.info(f"Remote path and file criteria: [{remote_path}{pattern}]")
+    log.info(f"Remote archive path: [{archive_path}]")
     log.info(f"Local path: [{local_path}]")
-    
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=120, conn_timeout = 120)
 
-    for filename in sftp_list:
-        if fnmatch.fnmatch(filename, pattern):
-            log.info(f"Retrieving file: [{filename}]...")
-            new_name = filename.replace(f'.{extension}', f'_{date_str}.{extension}')
+    SSH_HOOK  = SSHHook(
+        ssh_conn_id = hookname,
+        banner_timeout = 120,
+        conn_timeout   = 120,
+        keepalive_interval = 15
+    )
 
-            ## download file from SFTP and save as new_name
-            SFTP_HOOK.retrieve_file(remote_path + filename, local_path + new_name)
-            matched.append(local_path + new_name)
+    with SSH_HOOK.get_conn() as ssh_client:
+        SFTP_HOOK = ssh_client.open_sftp()
+        file_list = SFTP_HOOK.listdir(f"/{SUB_FOLDER}/outbound/{tablename}/")
 
-    ## close session to prevent SFTP overload
+        for filename in file_list:
+            if fnmatch.fnmatch(filename, pattern):
+                log.info(f"Retrieving file: [{filename}]...")
+                new_name = filename.replace(f'.{extension}', f'_{date_str}.{extension}')
+
+                ## download from SFTP and save as new_name
+                SFTP_HOOK.get(remote_path + filename, local_path + new_name)
+
+                ## upload local file to SFTP archive directory
+                log.info(f"Archiving local file: [{filename.split('/')[-1]}] to SFTP ...")
+                SFTP_HOOK.put(local_path + new_name, archive_path + filename)
+
+                ## remove sftp file on source path after move it to archive
+                SFTP_HOOK.remove(remote_path + filename)
+                matched.append(local_path + new_name)
+
+        ## disconnect when done with all files
+        SFTP_HOOK.close()
+
     log.info(f"Total files: [{len(matched)}]")
-    SFTP_HOOK.close_conn()
 
     if matched:
         ti.xcom_push(key='upload_list', value=matched)
@@ -78,31 +91,8 @@ def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str, sftp_lis
         shutil.rmtree(local_path)
         return f"skip_table_{branch_id}"
 
-def _archive_sftp(hookname, mainfolder, tablename, date_str, file_list):
-    local_path   = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/data/{tablename}_{date_str}/"
-    remote_path  = f"/{SUB_FOLDER}/outbound/{tablename}/"
-    archive_path = f"/{SUB_FOLDER}/outbound/{tablename}/archive/"
-    extension    = FILE_EXT.get(SUB_FOLDER)
-
-    log.info(f"Local path: [{local_path}]")
-    log.info(f"SFTP archive path: [{archive_path}]")
-
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, banner_timeout=120, conn_timeout = 120)
-
-    for filename in file_list:
-        new_name = filename.split('/')[-1].replace(f'_{date_str}.{extension}', f'.{extension}')
-
-        ## upload local file to SFTP archive directory
-        log.info(f"Archiving local file: [{filename.split('/')[-1]}] to SFTP ...")
-        SFTP_HOOK.store_file(archive_path + new_name, filename)
-
-        ## remove sftp file on source path after move it to archive
-        log.info(f"Removing SFTP file: [{remote_path + new_name}] ...")
-        SFTP_HOOK.delete_file(remote_path + new_name)
-
-    ## close session to prevent SFTP overload
-    log.info(f"Total files: [{len(file_list)}]")
-    SFTP_HOOK.close_conn()
+def _remove_local(subfolder, tablename, date_str):
+    local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/data/{tablename}_{date_str}/"
 
     ## remove local temp directory
     log.info(f"Removing local directory: [{local_path}] ...")
@@ -116,6 +106,7 @@ with DAG(
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'daily_data', 'sftp', 'jda_p2'],
+    description='SFTP to GCS and GBQ for B2S/ODP JDA phase2 data files',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
@@ -149,6 +140,7 @@ with DAG(
 
             BUCKET_NAME = f"sftp-phase2-jda-{source.lower()}-{BUCKET_TYPE}"
             DATASET_ID  = f"jda_{source.lower()}_daily_source"
+            HOOK_NAME   = f"sftp-{source.lower()}-connection-id"
 
             if source == "OFM": source = "ODP"
 
@@ -170,17 +162,6 @@ with DAG(
                         table_id = TABLE_ID,
                         gcs_schema_object = f"gs://{BUCKET_NAME}/schema/{table}.schema",
                         time_partitioning = { "type": "DAY" },
-                    )
-
-                    list_file = PythonOperator(
-                        task_id=f'list_file_{source}_{table}',
-                        python_callable=_list_file,
-                        pool='sftp_connect_pool',
-                        op_kwargs = {
-                            'hookname' : f"sftp-{source.lower()}-connection",
-                            'subfolder': SUB_FOLDER,
-                            'tablename': table
-                        }
                     )
 
                     with TaskGroup(
@@ -209,12 +190,11 @@ with DAG(
                                     python_callable=_get_sftp,
                                     pool='sftp_connect_pool',
                                     op_kwargs = {
-                                        'hookname'  : f"sftp-{source.lower()}-connection",
+                                        'hookname'  : HOOK_NAME,
                                         'mainfolder': source,
                                         'tablename' : table,
                                         'branch_id' : f'{source}_{table}_{interval}',
-                                        'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
-                                        'sftp_list' : f'{{{{ ti.xcom_pull(task_ids="list_file_{source}_{table}") }}}}'
+                                        'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}'
                                     }
                                 )
 
@@ -227,17 +207,14 @@ with DAG(
                                     dst = f"{SUB_FOLDER}/{TABLE_ID}/",
                                     bucket = BUCKET_NAME
                                 )
-
-                                archive_sftp = PythonOperator(
-                                    task_id=f'archive_sftp_{source}_{table}_{interval}',
-                                    python_callable=_archive_sftp,
-                                    pool='sftp_connect_pool',
+                                
+                                remove_local = PythonOperator(
+                                    task_id=f'remove_local_{source}_{table}_{interval}',
+                                    python_callable=_remove_local,
                                     op_kwargs = {
-                                        'hookname' : f"sftp-{source.lower()}-connection",
-                                        'mainfolder': source,
-                                        'tablename' : table,
-                                        'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}',
-                                        'file_list' : f'{{{{ ti.xcom_pull(key = "upload_list", task_ids="get_sftp_{source}_{table}_{interval}") }}}}'
+                                        'subfolder': source,
+                                        'tablename': table,
+                                        'date_str' : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}'
                                     }
                                 )
 
@@ -266,8 +243,8 @@ with DAG(
                                 )
 
                                 gen_date >> get_sftp >> [ skip_table, save_gcs ]
-                                save_gcs >> [ archive_sftp, load_gbq ]
+                                save_gcs >> [ load_gbq, remove_local ]
 
-                    start_source >> [ create_table, list_file ] >> load_interval_tasks_group
-
+                    create_table >> load_interval_tasks_group
+            start_source >> load_tables_tasks_group
     start_task >> load_source_tasks_group >> end_task
