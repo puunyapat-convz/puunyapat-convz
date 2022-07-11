@@ -43,7 +43,7 @@ FILE_EXT    = { "JDA": "dat", "POS": "TXT"  }
 def _gen_date(ds, offset):
     localtime = arrow.get(ds).to(TIMEZONE)
     log.info(f"UTC time: {ds}")
-    log.info(f"Local time: {localtime}")
+    log.info(f"{TIMEZONE} time: {localtime}")
     return ds_add(localtime.strftime("%Y-%m-%d"), offset)
 
 def _get_sftp(ti, subfolder, tablename, branch_id, date_str):
@@ -54,7 +54,7 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str):
 
     extension = FILE_EXT.get(subfolder)
     pattern   = f"*{date_str.replace('-','')}*.{extension}"
-    matched   = []    
+    matched   = []
 
     pathlib.Path(local_path).mkdir(parents=True, exist_ok=True)
     log.info(f"Remote path and file criteria: [{remote_path}{pattern}]")
@@ -65,7 +65,7 @@ def _get_sftp(ti, subfolder, tablename, branch_id, date_str):
         SFTP_HOOK = ssh_client.open_sftp()
         file_list = SFTP_HOOK.listdir(f"/{subfolder}/outbound/{tablename}/archive/")
         # file_list = SFTP_HOOK.listdir(f"/{subfolder}/outbound/{tablename}/")
-        
+
         for filename in file_list:
             if fnmatch.fnmatch(filename, pattern):
                 log.info(f"Retrieving file: [{filename}]...")
