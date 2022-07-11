@@ -5,7 +5,7 @@ from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
 from utils.dag_notification    import *
 
-from airflow.providers.sftp.hooks.sftp  import *
+from airflow.providers.ssh.hooks.ssh    import *
 
 import datetime as dt
 import logging
@@ -22,9 +22,17 @@ SUB_FOLDER  = ["POS"]
 ###############################
 
 def _list_file(ti, hookname, mainfolder, subfolder, tablename):
-    SFTP_HOOK = SFTPHook(ssh_conn_id=hookname, keepalive_interval=10)
-    file_list = SFTP_HOOK.list_directory(f"/{subfolder}/outbound/{tablename}/")
-    SFTP_HOOK.close_conn()
+    SSH_HOOK  = SSHHook(
+        ssh_conn_id = hookname,
+        banner_timeout = 120,
+        conn_timeout   = 120,
+        keepalive_interval = 15
+    )
+
+    with SSH_HOOK.get_conn() as ssh_client:
+        SFTP_HOOK = ssh_client.open_sftp()
+        file_list = SFTP_HOOK.listdir(f"/{subfolder}/outbound/{tablename}/")
+        SFTP_HOOK.close()
 
     if file_list == [ 'archive' ]:
         return f"no_alert_{mainfolder}_{subfolder}_{tablename}"
@@ -42,6 +50,7 @@ with DAG(
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'alert', 'sftp'],
+    description='Alert for stuck files on SFTP server',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
@@ -69,6 +78,11 @@ with DAG(
     ) as load_source_tasks_group:
 
         for source in MAIN_FOLDER:
+
+            if source == "ODP": source = "OFM"
+            HOOK_NAME   = f"sftp-{source.lower()}-connection-id"
+            if source == "OFM": source = "ODP"
+
             for subsource in SUB_FOLDER:
 
                 start_source = DummyOperator(task_id = f"start_{source}_{subsource}")
@@ -87,7 +101,7 @@ with DAG(
                             python_callable=_list_file,
                             pool='sftp_connect_pool',
                             op_kwargs = {
-                                'hookname'  : f"sftp-{source.lower()}-connection",
+                                'hookname'  : HOOK_NAME,
                                 'mainfolder': source,
                                 'subfolder' : subsource,
                                 'tablename' : table
