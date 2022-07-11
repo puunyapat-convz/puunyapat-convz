@@ -53,7 +53,8 @@ with DAG(
     # end_date=dt.datetime(2022, 5, 11, 15, 59),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'production', 'mario', 'alert'],
+    tags=['convz', 'production', 'mario', 'alert', 'gcs'],
+    description='Alert for missing intraday files on GCS',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,

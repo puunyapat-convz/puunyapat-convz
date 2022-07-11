@@ -59,6 +59,7 @@ with DAG(
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'intermediate', 'jda'],
+    description='Run queries for BI intermediate tables from SFTP source (B2S/ODP JDA)',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,

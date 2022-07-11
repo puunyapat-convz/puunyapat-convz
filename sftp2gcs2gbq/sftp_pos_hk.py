@@ -46,7 +46,7 @@ with DAG(
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'sftp', 'utility'],
     render_template_as_native_obj=True,
-    description='Files housekeeper for POS on GCS',
+    description='Housekeeper for POS_Txn files on GCS',
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
         'retries': 0
