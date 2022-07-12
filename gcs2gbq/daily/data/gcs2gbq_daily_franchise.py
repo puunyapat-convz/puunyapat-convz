@@ -262,6 +262,7 @@ with DAG(
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'gcs', 'production', 'mal', 'daily_data', 'franchise'],
+    description='GCS to GBQ for daily ERP data files',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
@@ -270,7 +271,7 @@ with DAG(
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
-    end_task   = DummyOperator(task_id = "end_task", trigger_rule = 'all_done')
+    end_task   = DummyOperator(task_id = "end_task", trigger_rule='none_failed')
 
     create_ds_final = BigQueryCreateEmptyDatasetOperator(
         task_id     = "create_ds_final",

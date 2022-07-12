@@ -52,6 +52,7 @@ with DAG(
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'gcs', 'development', 'mario', 'daily_data', 'odp'],
+    description='GCS to GBQ (DEV) for daily ODP POS/JDA data files',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
@@ -60,7 +61,7 @@ with DAG(
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
-    end_task   = DummyOperator(task_id = "end_task")
+    end_task   = DummyOperator(task_id = "end_task", trigger_rule='none_failed')
 
     iterable_sources_list = Variable.get(
         key=f'sftp_folders',
