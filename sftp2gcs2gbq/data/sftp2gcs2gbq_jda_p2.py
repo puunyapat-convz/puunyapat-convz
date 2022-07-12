@@ -91,8 +91,8 @@ def _get_sftp(ti, hookname, mainfolder, tablename, branch_id, date_str):
         shutil.rmtree(local_path)
         return f"skip_table_{branch_id}"
 
-def _remove_local(subfolder, tablename, date_str):
-    local_path   = f"{MAIN_PATH}/{MAIN_FOLDER}_{subfolder}/data/{tablename}_{date_str}/"
+def _remove_local(mainfolder, tablename, date_str):
+    local_path   = f"{MAIN_PATH}/{mainfolder}_{SUB_FOLDER}/data/{tablename}_{date_str}/"
 
     ## remove local temp directory
     log.info(f"Removing local directory: [{local_path}] ...")
@@ -115,7 +115,7 @@ with DAG(
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
-    end_task   = DummyOperator(task_id = "end_task")
+    end_task   = DummyOperator(task_id = "end_task", trigger_rule='none_failed')
 
     iterable_sources_list = Variable.get(
         key=f'sftp_folders',
@@ -212,9 +212,9 @@ with DAG(
                                     task_id=f'remove_local_{source}_{table}_{interval}',
                                     python_callable=_remove_local,
                                     op_kwargs = {
-                                        'subfolder': source,
-                                        'tablename': table,
-                                        'date_str' : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}'
+                                        'mainfolder': source,
+                                        'tablename' : table,
+                                        'date_str'  : f'{{{{ ti.xcom_pull(task_ids="gen_date_{source}_{table}_{interval}") }}}}'
                                     }
                                 )
 
