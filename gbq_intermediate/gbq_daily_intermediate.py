@@ -50,7 +50,7 @@ with DAG(
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'production', 'mario', 'intermediate'],
-    description='Run queries for BI intermediate tables from GCS source including data VS control files tables',
+    description='Run queries for BI intermediate tables from GCS source and data VS control files',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
@@ -59,7 +59,7 @@ with DAG(
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
-    end_task   = DummyOperator(task_id = "end_task")
+    end_task   = DummyOperator(task_id = "end_task", trigger_rule='none_failed')
 
     CONFIG_VALUE = Variable.get(
         key='gbq_intermediate',

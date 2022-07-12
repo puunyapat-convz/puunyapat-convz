@@ -59,7 +59,7 @@ with DAG(
 ) as dag:
 
     start_task = DummyOperator(task_id = "start_task")
-    end_task   = DummyOperator(task_id = "end_task")
+    end_task   = DummyOperator(task_id = "end_task", trigger_rule='none_failed')
 
     iterable_sources_list = Variable.get(
         key=f'sftp_alert',
