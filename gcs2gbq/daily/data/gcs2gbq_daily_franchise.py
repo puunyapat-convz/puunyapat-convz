@@ -4,20 +4,19 @@ from airflow.operators.bash    import BashOperator
 from airflow.operators.dummy   import DummyOperator
 from airflow.models            import Variable
 from airflow.utils.task_group  import TaskGroup
-from utils.dag_notification    import ofm_task_fail_slack_alert
+from utils.dag_notification    import *
 
 from airflow.providers.google.cloud.hooks.gcs          import *
 from airflow.providers.google.cloud.operators.bigquery import *
 from airflow.providers.google.cloud.operators.gcs      import *
 
 from airflow.providers.google.cloud.transfers.local_to_gcs    import *
+from airflow.providers.google.cloud.transfers.gcs_to_local    import *
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import *
 
 import datetime as dt
 import pandas   as pd
-import tempfile
-import logging
-import json
+import pathlib, tempfile, logging, json, arrow
 
 ######### VARIABLES ###########
 
@@ -31,19 +30,30 @@ BQ_DTYPE = [
     [ "INT64", "integer", "int", "tinyint", "smallint", "bigint" ],
     [ "FLOAT64", "float", "numeric", "decimal", "money" ],
     [ "BOOLEAN", "bit", "boolean" ],
+    [ "BYTES", "varbinary" ],
     [ "DATE", "date" ],
     [ "TIME", "time" ],
     [ "DATETIME", "datetime", "datetime2", "smalldatetime" ],
     [ "TIMESTAMP", "timestamp" ]
 ]
 
+DATE_FORMAT = {
+    "DATE" : "%FT%R:%E*SZ",
+    "TIME" : "%T",
+    "DATETIME"  : "%FT%R:%E*SZ",
+    "TIMESTAMP" : "%FT%R:%E*SZ"
+}
+
 log       = logging.getLogger(__name__)
 path      = configuration.get('core','dags_folder')
+
 MAIN_PATH = path + "/../data"
+TIMEZONE  = 'Asia/Bangkok'
 
 SCHEMA_FILE    = f"{MAIN_PATH}/schemas/OFM-B2S_Source_Datalake_20211020-live-version.xlsx"
 SCHEMA_SHEET   = "Field-Franchise"
-SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] # Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
+SCHEMA_COLUMNS = ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"] 
+# Example value ["TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE"]
 
 PROJECT_ID   = "central-cto-ofm-data-hub-prod"
 DATASET_ID   = "franchise_ofm_daily"
@@ -66,6 +76,7 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
                  content,
                  dst,
                  bucket,
+                 pretty,
                  gcp_conn_id='google_cloud_default',
                  mime_type='application/octet-stream',
                  delegate_to=None,
@@ -81,6 +92,7 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
         self.mime_type = mime_type
         self.delegate_to = delegate_to
         self.gzip = gzip
+        self.pretty = pretty
 
     def execute(self, context):
 
@@ -89,7 +101,8 @@ class ContentToGoogleCloudStorageOperator(BaseOperator):
             delegate_to=self.delegate_to
         )
 
-        json_data = json.dumps(self.content, indent=4)
+        temp_data = json.loads(self.content) if isinstance(self.content, str) else self.content
+        json_data = json.dumps(temp_data, indent=4) if self.pretty else json.dumps(temp_data, separators=(',', ':'))
 
         with tempfile.NamedTemporaryFile(prefix="gcs-local") as file:
             file.write(json_data.encode('utf-8'))
@@ -140,34 +153,33 @@ def _generate_schema(table_name, report_date, run_date):
                 break
 
         if gbq_data_type == "":
-            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'") 
-       
-        if gbq_data_type.upper() in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
-            if gbq_field_mode == "NULLABLE":
-                method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` IS NULL," \
-                            + f" CAST(PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()}), NULL)"
-            else:
-                method = f"CAST (PARSE_TIMESTAMP('%FT%R:%E*SZ', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type.upper()})"
+            log.error(f"Cannot map field '{rows.COLUMN_NAME}' with data type: '{src_data_type}'")
         else:
-            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type.upper()})"
+            gbq_data_type = gbq_data_type.upper()
+       
+        if gbq_data_type in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]:
+            if gbq_field_mode == "NULLABLE":
+                method = f"IF   ({FIELD_PREFIX}`{rows.COLUMN_NAME}` = ''," \
+                            + f" NULL, CAST(PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type}))"
+            else:
+                method = f"CAST (PARSE_TIMESTAMP('{DATE_FORMAT.get(gbq_data_type)}', {FIELD_PREFIX}`{rows.COLUMN_NAME}`) AS {gbq_data_type})"
+        else:
+            method = f"CAST ({FIELD_PREFIX}`{rows.COLUMN_NAME}` AS {gbq_data_type})"
 
         query = f"{query}\t{method} AS `{rows.COLUMN_NAME}`,\n"
-        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type.upper(), "mode":gbq_field_mode })
+        schema.append({"name":rows.COLUMN_NAME, "type":gbq_data_type, "mode":gbq_field_mode })
 
     # Add time partitioned field
     schema.append({"name":"report_date", "type":"DATE", "mode":"REQUIRED"})
     schema.append({"name":"run_date", "type":"DATE", "mode":"REQUIRED"})
 
     query = f"{query}\tDATE('{report_date}') AS `report_date`,\n"
-    query = f"{query}\tDATE('" + f"{run_date.strftime('%Y-%m-%d')}') AS `run_date`\n"
-
+    query = f"{query}\tDATE('" + f"{run_date}') AS `run_date`\n"
     query = f"{query}FROM `{PROJECT_ID}.{DATASET_ID}_stg.{table_name}_{SOURCE_TYPE}_stg`\n"
-    # query = f"{query}WHERE DATE(_PARTITIONTIME) = '{report_date}'"
-    # query = f"{query}LIMIT 10"
 
     return schema, query
 
-def _check_file(tablename, filename):
+def _check_file(ti, tablename, filename, gcs_path):
     result = False
 
     with open(filename) as f:
@@ -184,9 +196,10 @@ def _check_file(tablename, filename):
 
         if not result:
             log.info(f"Table [ {tablename} ] has no T-1 file(s) for this run.")
+            ti.xcom_push(key='gcs_uri', value=gcs_path)
             return f"skip_table_{tablename}"
         else:
-            return f"read_tm1_list_{tablename}"
+            return f"read_list_{tablename}"
 
 def _read_file(filename):
     with open(filename) as f:
@@ -201,7 +214,6 @@ def _read_file(filename):
         for line in lines:
             split_line    = line.split(",")
             split_line[1] = int(split_line[1])
-            # split_line[2] = split_line[2].replace(f"gs://{BUCKET_NAME}/", "")
 
             if split_line[1] == 0:
                 log.warning(f"Skipped file [{split_line[2]}] which has size {split_line[1]} byte.")
@@ -214,9 +226,11 @@ def _read_file(filename):
 
 def _check_xcom(table_name, tm1_varible):
     if len(tm1_varible) == 0:
-        log.info(f"Table [ {table_name} ] has no T-1 file to load.")        
+        log.info(f"Table [ {table_name} ] has no T-1 file to load.")
         return f"skip_load_{table_name}"
     else:
+        path = pathlib.Path(f'{MAIN_PATH}/{SOURCE_NAME}/{table_name}')
+        path.mkdir(parents=True, exist_ok=True)
         return [ f"drop_temp_{table_name}", f"create_schema_{table_name}", f"get_sample_{table_name}" ]
 
 def _get_schema(table_name):
@@ -254,6 +268,55 @@ def _update_schema(stg_schema, fin_schema):
     json_schema["fields"][index]["fields"] = stg_schema
     return json.dumps(json_schema, indent=4)
 
+def _get_sample(blobname):
+
+    for line in blob_lines(blobname):
+        return line
+
+def blob_lines(filename):
+    BLOB_CHUNK_SIZE = 2560
+    position = 0
+    buff = []
+    storage_client = storage.Client()
+    bucket = storage_client.get_bucket(BUCKET_NAME)
+    blob = storage.Blob(filename, bucket)
+
+    while True:
+        chunk = blob.download_as_bytes(
+            start=position, 
+            end=position + BLOB_CHUNK_SIZE,
+        )
+
+        if b'\n' in chunk:
+            part1, part2 = chunk.split(b'\n', 1)
+            buff.append(part1.decode('utf-8','replace'))
+            yield ''.join(buff)
+            parts = part2.split(b'\n')
+
+            for part in parts[:-1]:
+                yield part.decode('utf-8','replace')
+
+            buff = [parts[-1].decode('utf-8','replace')]
+            yield ''.join(buff)
+            return
+        else:
+            buff.append(chunk.decode('utf-8','replace'))
+
+        position += BLOB_CHUNK_SIZE + 1  # Blob chunk is downloaded using closed interval
+
+def _gen_date(logical, int_end):
+    local_logical = arrow.get(logical).to(TIMEZONE)
+    local_int_end = arrow.get(int_end).to(TIMEZONE)
+
+    log.info(f"UTC logical_date: {logical}")
+    log.info(f"{TIMEZONE} logical_date: {local_logical}")
+
+    log.info(f"UTC date_interval_end: {int_end}")
+    log.info(f"{TIMEZONE} date_interval_end: {local_int_end}")
+
+    ## return as [ ds, data_interval_end ] in local timezone
+    return [ local_logical.strftime("%Y-%m-%d"), local_int_end.strftime("%Y-%m-%d") ]
+
 with DAG(
     dag_id="gcs2gbq_daily_franchise",
     # schedule_interval=None,
@@ -262,7 +325,7 @@ with DAG(
     catchup=True,
     max_active_runs=1,
     tags=['convz', 'gcs', 'production', 'mal', 'daily_data', 'franchise'],
-    description='GCS to GBQ for daily ERP data files',
+    description='GCS to GBQ for daily Franchise data files',
     render_template_as_native_obj=True,
     default_args={
         'on_failure_callback': ofm_task_fail_slack_alert,
@@ -291,12 +354,21 @@ with DAG(
         exists_ok   = True
     )
 
+    gen_date = PythonOperator(
+        task_id=f"gen_date",
+        python_callable=_gen_date,
+        op_kwargs = {
+            'logical': '{{ ts }}',
+            'int_end': '{{ data_interval_end }}'
+        }
+    )
+
     iterable_tables_list = Variable.get(
-        key=f'{SOURCE_NAME}_tables',
+        key=f'{SOURCE_NAME}_{SOURCE_TYPE}',
         default_var=['default_table'],
         deserialize_json=True
     )
-    # iterable_tables_list = [ "tbaccount_segment" ]
+    # iterable_tables_list = [ "tbshippinglabelinformation" ]
 
     with TaskGroup(
         'load_tm1_folders_tasks_group',
@@ -306,40 +378,44 @@ with DAG(
         if iterable_tables_list:
             for index, tm1_table in enumerate(iterable_tables_list):
 
-                create_tm1_list = BashOperator(
-                    task_id  = f"create_tm1_list_{tm1_table}",
-                    cwd      = MAIN_PATH,
-                    trigger_rule = 'all_success',
-                    bash_command = "yesterday=$(sed 's/-/_/g' <<< {{ ds }});"
-                                    + f' gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/$yesterday*.jsonl"'
-                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > {SOURCE_NAME}_{tm1_table}_tm1_files;"
-                                    + f' echo "{MAIN_PATH}/{SOURCE_NAME}_{tm1_table}_tm1_files"'
+                create_list = BashOperator(
+                    task_id = f"create_list_{tm1_table}",
+                    cwd     = MAIN_PATH,
+                    bash_command = f"temp=$(mktemp {SOURCE_NAME}_{SOURCE_TYPE}.XXXXXXXX)" 
+                                    + f' && gsutil du "gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","_") }}}}*.jsonl"'
+                                                                                    ## use yesterday_ds for manual run ^
+                                    + f" | tr -s ' ' ',' | sed 's/^/{tm1_table},/g' | sort -t, -k2n > $temp;"
+                                    + f' echo "{MAIN_PATH}/$temp"'
                 )
 
-                check_tm1_list = BranchPythonOperator(
-                    task_id=f'check_tm1_list_{tm1_table}',
+                check_list = BranchPythonOperator(
+                    task_id=f'check_list_{tm1_table}',
                     python_callable=_check_file,
                     op_kwargs = { 
                         'tablename' : tm1_table,
-                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}'
+                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_list_{tm1_table}") }}}}',
+                        'gcs_path' : f'gs://{BUCKET_NAME}/{SOURCE_NAME}/{SOURCE_TYPE}/{tm1_table}/{{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","_") }}}}*.jsonl'
                     }
                 )
 
-                skip_table = DummyOperator(task_id = f"skip_table_{tm1_table}")
+                skip_table = DummyOperator(
+                    task_id = f"skip_table_{tm1_table}",
+                    on_success_callback = ofm_missing_daily_file_slack_alert
+                )
 
-                read_tm1_list = PythonOperator(
-                    task_id = f'read_tm1_list_{tm1_table}',
+                read_list = PythonOperator(
+                    task_id = f'read_list_{tm1_table}',
                     python_callable = _read_file,
                     op_kwargs={ 
-                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_tm1_list_{tm1_table}") }}}}'
+                        'filename' : f'{{{{ ti.xcom_pull(task_ids="create_list_{tm1_table}") }}}}'
                     },
                 )
 
-                remove_file_list = BashOperator(
-                    task_id  = f"remove_file_list_{tm1_table}",
+                remove_list = BashOperator(
+                    task_id  = f"remove_list_{tm1_table}",
                     cwd      = MAIN_PATH,
                     trigger_rule = 'all_done',
-                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_tm1_list_{tm1_table}') }}}}"
+                    bash_command = f"rm -f {{{{ ti.xcom_pull(task_ids='create_list_{tm1_table}') }}}}"
                 )
 
                 check_xcom = BranchPythonOperator(
@@ -347,7 +423,7 @@ with DAG(
                     python_callable=_check_xcom,
                     op_kwargs = {
                         'table_name'  : tm1_table,
-                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}'
+                        'tm1_varible' : f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}") }}}}'
                     }
                 )
 
@@ -355,22 +431,21 @@ with DAG(
 
                 create_schema = PythonOperator(
                     task_id=f'create_schema_{tm1_table}',
-                    provide_context=True,
-                    dag=dag,
                     python_callable=_generate_schema,
                     op_kwargs={ 
                         'table_name' : tm1_table,
-                        'report_date': '{{ ds }}',
-                        'run_date'   : '{{ data_interval_end }}'
+                        'report_date': '{{ ti.xcom_pull(task_ids="gen_date")[0] }}',
+                        'run_date'   : '{{ ti.xcom_pull(task_ids="gen_date")[1] }}'
                     },
                 )
 
                 schema_to_gcs = ContentToGoogleCloudStorageOperator(
                     task_id = f'schema_to_gcs_{tm1_table}',
                     content = f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[0] }}}}',
-                    dst     = f'{SOURCE_NAME}/schemas/{tm1_table}.json',
+                    dst     = f'{SOURCE_NAME}/schemas/{SOURCE_TYPE}_{tm1_table}.json',
                     bucket  = BUCKET_NAME,
-                    gcp_conn_id = "convz_dev_service_account"
+                    pretty  = True,
+                    gcp_conn_id = "convz_dev_service_account",
                 )
 
                 create_final_table = BigQueryCreateEmptyTableOperator(
@@ -392,39 +467,60 @@ with DAG(
                     deletion_dataset_table = f"{PROJECT_ID}.{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg"
                 )
 
-                get_sample = BashOperator(
-                    task_id  = f"get_sample_{tm1_table}",
-                    cwd      = MAIN_PATH,
-                    bash_command = f'mkdir -p {SOURCE_NAME}/{tm1_table} && cd {SOURCE_NAME}/{tm1_table}' \
-                                    + f' && data_file=$(basename {{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}} | cut -d. -f1)' \
-                                    + f' && gsutil cp "{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}")[0] }}}}" .' \
-                                    + f" && head -1 $data_file.jsonl > $data_file-sample.jsonl" \
-                                    + f" && rm -f $data_file.jsonl" \
-                                    + f" && echo $PWD/$data_file-sample.jsonl"
-                )              
+                get_sample = PythonOperator(
+                    task_id=f"get_sample_{tm1_table}",
+                    python_callable=_get_sample,
+                    op_kwargs = {
+                        "blobname": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}")[0].replace("gs://{BUCKET_NAME}/","") }}}}',
+                    }
+                )
 
-                load_sample = BashOperator(
-                    task_id  = f"load_sample_{tm1_table}",
-                    cwd      = f"{MAIN_PATH}/{SOURCE_NAME}",
-                    trigger_rule = 'all_success',
-                    bash_command = "bq load --autodetect --source_format=NEWLINE_DELIMITED_JSON" \
-                                    + f" {PROJECT_ID}:{DATASET_ID}_stg.{tm1_table}_{SOURCE_TYPE}_stg" \
-                                    + f' {{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}' \
-                                    + f' && rm -rf {tm1_table}'
+                save_sample = ContentToGoogleCloudStorageOperator(
+                    task_id = f'save_sample_{tm1_table}',
+                    content = f'{{{{ ti.xcom_pull(task_ids="get_sample_{tm1_table}") }}}}',
+                    dst     = f'{SOURCE_NAME}/sample/{SOURCE_TYPE}_{tm1_table}-sample.jsonl',
+                    bucket  = BUCKET_NAME,
+                    pretty  = False,
+                    gcp_conn_id = "convz_dev_service_account"
+                )
+
+                load_sample = BigQueryInsertJobOperator( 
+                    task_id = f"load_sample_{tm1_table}",
+                    gcp_conn_id = "convz_dev_service_account",
+                    configuration = {
+                        "load": {
+                            "sourceUris": [ f'{{{{ ti.xcom_pull(task_ids="save_sample_{tm1_table}") }}}}' ],
+                            "destinationTable": {
+                                "projectId": PROJECT_ID,
+                                "datasetId": f"{DATASET_ID}_stg",
+                                "tableId": f"{tm1_table}_{SOURCE_TYPE}_stg"
+                            },
+                            "autodetect": True,
+                            "createDisposition": "CREATE_IF_NEEDED",
+                            "sourceFormat": "NEWLINE_DELIMITED_JSON",
+                        }
+                    }
+                )
+
+                remove_sample = GCSDeleteObjectsOperator(
+                    task_id = f"remove_sample_{tm1_table}",
+                    objects = [ f'{{{{ ti.xcom_pull(task_ids="save_sample_{tm1_table}").replace("gs://{BUCKET_NAME}/","") }}}}' ], 
+                    bucket_name = BUCKET_NAME, 
+                    gcp_conn_id = 'convz_dev_service_account'
                 )
 
                 get_schema = PythonOperator(
                     task_id=f"get_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_get_schema,
                     op_kwargs = {
                         "table_name" : f"{tm1_table}_{SOURCE_TYPE}_stg"
                     }
                 )
 
+                join_point = DummyOperator(task_id = f"join_point_{tm1_table}")
+
                 update_schema = PythonOperator(
                     task_id=f"update_schema_{tm1_table}",
-                    provide_context=True,
                     python_callable=_update_schema,
                     op_kwargs = {
                         "stg_schema": f'{{{{ ti.xcom_pull(task_ids="get_schema_{tm1_table}") }}}}',
@@ -443,14 +539,13 @@ with DAG(
                 load_stg = BigQueryInsertJobOperator( 
                     task_id = f"load_stg_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "load": {
-                            "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_tm1_list_{tm1_table}") }}}}',
+                            "sourceUris": f'{{{{ ti.xcom_pull(task_ids="read_list_{tm1_table}") }}}}',
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": f"{DATASET_ID}_stg",
-                                "tableId": f"{tm1_table}_{SOURCE_TYPE}_stg${{{{ ds_nodash }}}}"
+                                "tableId": f'{tm1_table}_{SOURCE_TYPE}_stg${{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","") }}}}'
                             },
                             "schema": f'{{{{ ti.xcom_pull(task_ids="update_schema_{tm1_table}") }}}}',
                             "timePartitioning": { "type": "DAY" },
@@ -465,14 +560,13 @@ with DAG(
                 load_final = BigQueryInsertJobOperator( 
                     task_id = f"load_final_{tm1_table}",
                     gcp_conn_id = "convz_dev_service_account",
-                    trigger_rule = 'all_success',
                     configuration = {
                         "query": {
                             "query": f'{{{{ ti.xcom_pull(task_ids="create_schema_{tm1_table}")[1] }}}}',
                             "destinationTable": {
                                 "projectId": PROJECT_ID,
                                 "datasetId": DATASET_ID,
-                                "tableId": f"{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ds_nodash }}}}"
+                                "tableId": f'{tm1_table.lower()}_{SOURCE_TYPE}_source${{{{ ti.xcom_pull(task_ids="gen_date")[0].replace("-","") }}}}'
                             },
                             "createDisposition": "CREATE_IF_NEEDED",
                             "writeDisposition": "WRITE_TRUNCATE",
@@ -486,12 +580,12 @@ with DAG(
                 )
 
                 # TaskGroup load_files_tasks_group level dependencies
-                create_tm1_list >> check_tm1_list >> [ skip_table, read_tm1_list ] >> remove_file_list
-                read_tm1_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
+                create_list >> check_list >> [ skip_table, read_list ] >> remove_list
+                read_list >> check_xcom >> [ skip_load, create_schema, drop_temp, get_sample ]
 
-                [ drop_temp, get_sample ] >> load_sample >> get_schema >> [ update_schema, drop_sample ] >> load_stg >> load_final
+                [ drop_temp, get_sample ] >> save_sample >> load_sample >> [ remove_sample, get_schema ] >> join_point >> [ update_schema, drop_sample ] >> load_stg >> load_final
                 create_schema >> schema_to_gcs >> create_final_table >> load_final
 
     # DAG level dependencies
-    start_task >> [ create_ds_final, create_ds_stg ] >> load_folders_tasks_group
+    start_task >> [ create_ds_final, create_ds_stg ] >> gen_date >> load_folders_tasks_group
     load_folders_tasks_group >> end_task
