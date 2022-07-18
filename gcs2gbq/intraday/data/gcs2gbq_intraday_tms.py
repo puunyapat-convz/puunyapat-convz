@@ -317,7 +317,7 @@ with DAG(
     # end_date=dt.datetime(2022, 4, 25, 1, 32),
     catchup=True,
     max_active_runs=1,
-    tags=['convz', 'production' ,'mario', 'intraday_data', 'tms'],
+    tags=['convz', 'production' ,'mario', 'intraday_data', 'tms', 'gcs'],
     description='GCS to GBQ for intraday TMS data files',
     render_template_as_native_obj=True,
     default_args={
