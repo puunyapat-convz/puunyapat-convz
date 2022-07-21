@@ -321,6 +321,7 @@ with DAG(
     description='GCS to GBQ for intraday Officemate data files',
     render_template_as_native_obj=True,
     default_args={
+        'pool': 'gcs2gbq_intraday_ofm_pool',
         'on_failure_callback': ofm_task_fail_slack_alert,
         'retries': 0
     }
