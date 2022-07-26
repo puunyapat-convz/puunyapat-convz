@@ -73,7 +73,7 @@ with DAG(
     # }
 
     with TaskGroup(
-        f'load_{SUB_FOLDER}_tasks_group',
+        f'load_{SUB_FOLDER[0]}_tasks_group',
         prefix_group_id=False,
     ) as load_source_tasks_group:
 
